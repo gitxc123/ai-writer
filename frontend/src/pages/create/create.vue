@@ -161,12 +161,15 @@
         </text>
         <view class="image-grid">
           <view v-for="(item, idx) in displayImages" :key="item.url + idx" class="image-card">
-            <image
-              class="cover-image"
-              :src="item.url"
-              mode="widthFix"
-              @click="previewImage(idx)"
-            />
+            <view class="image-wrap">
+              <image
+                class="cover-image"
+                :src="item.url"
+                mode="widthFix"
+                @click="previewImage(idx)"
+              />
+              <text v-if="imageTypeLabel(item.type)" class="img-tag">{{ imageTypeLabel(item.type) }}</text>
+            </view>
             <text v-if="item.caption" class="image-caption">对应：{{ item.caption }}</text>
             <text v-if="item.credit" class="image-credit">{{ item.credit }}</text>
           </view>
@@ -230,8 +233,23 @@ const submitLabel = computed(() => {
   return '一键生成图文';
 });
 
+const IMAGE_TYPE_LABELS = {
+  enhanced: '已修复',
+  closeup: '特写',
+  scene: '场景'
+};
+
+function imageTypeLabel(type) {
+  return IMAGE_TYPE_LABELS[type] || '';
+}
+
 const displayImages = computed(() => {
-  if (imageMeta.value.length) return imageMeta.value;
+  if (imageMeta.value.length) {
+    return imageMeta.value.map((meta, i) => ({
+      ...meta,
+      url: meta.url || imageUrls.value[i]
+    }));
+  }
   return imageUrls.value.map((url) => ({ url }));
 });
 
@@ -749,6 +767,20 @@ function goTasks() {
 }
 .image-card {
   margin-bottom: 8rpx;
+}
+.image-wrap {
+  position: relative;
+}
+.img-tag {
+  position: absolute;
+  left: 12rpx;
+  top: 12rpx;
+  font-size: 20rpx;
+  color: #fff;
+  background: rgba(0, 0, 0, 0.55);
+  padding: 4rpx 12rpx;
+  border-radius: 8rpx;
+  line-height: 1.4;
 }
 .image-caption {
   font-size: 24rpx;
