@@ -41,10 +41,11 @@ router.post('/', authMiddleware, async (req, res) => {
       }
     }
 
+    const { productPhotos: _pp, ...cleanInputs } = inputs || {};
     const source = imageSource === 'web' ? 'web' : 'ai';
     const storedInput = productPhotos
-      ? { ...(inputs || {}), productPhotos, imageSource: 'product', imageCount: 0, imageSize: 'square' }
-      : { ...(inputs || {}), imageCount: count, imageSize: size, imageSource: source };
+      ? { ...cleanInputs, productPhotos, imageSource: 'product', imageCount: 0, imageSize: 'square' }
+      : { ...cleanInputs, imageCount: count, imageSize: size, imageSource: source };
     const prompt = fillPrompt(template.prompt, inputs || {});
 
     const task = await prisma.generationRecord.create({

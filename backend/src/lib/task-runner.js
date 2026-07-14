@@ -61,7 +61,7 @@ function parseInput(task) {
   const imageCount = Math.min(5, Math.max(0, Number(raw.imageCount) || 0));
   const imageSize = raw.imageSize || task.imageSize || 'landscape';
   let imageSource = raw.imageSource === 'web' ? 'web' : 'ai';
-  if (raw.imageSource === 'product' || productPhotos?.length) imageSource = 'product';
+  if (raw.imageSource === 'product') imageSource = 'product';
   return { inputs, imageCount, imageSize, imageSource, productPhotos };
 }
 
@@ -140,8 +140,8 @@ async function runGenerationTaskBody(taskId) {
   console.log('[task:generation] text done', taskId, 'len=', output.length);
 
   if (
-    imageSource === 'product' ||
-    (isProductIntroTemplate(task.template.name) && productPhotos?.length)
+    isProductIntroTemplate(task.template.name) &&
+    (productPhotos?.length || imageSource === 'product')
   ) {
     const jobs = planProductImageJobs({
       photos: productPhotos,
@@ -182,10 +182,12 @@ async function runGenerationTaskBody(taskId) {
           error: err.message,
           sourceType: 'product-img2img'
         });
+        await saveImages(taskId, imageUrls, imageMeta);
       }
     }
 
     if (success === 0) {
+      await saveImages(taskId, imageUrls, imageMeta);
       await markFailed(taskId, '产品配图全部失败');
       return;
     }
