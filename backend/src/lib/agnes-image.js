@@ -39,22 +39,29 @@ export function buildImagePromptVariant({ keyword, style, templateName, output, 
   return `${base}, ${variant}${context}, image ${index + 1} of ${total}, unique angle, content-accurate`;
 }
 
-export async function generateImage({
-  prompt,
-  size = '1024x768',
-  model = DEFAULT_MODEL,
-  images
-}) {
+export function buildImagePayload({ prompt, size = '1024x768', model, images }) {
   const extra_body = { response_format: 'url' };
   if (Array.isArray(images) && images.length) {
     extra_body.image = images;
   }
-  const payload = {
-    model: images?.length ? (model || 'agnes-image-2.0-flash') : model,
+  const resolvedModel = images?.length
+    ? (model || 'agnes-image-2.0-flash')
+    : (model || DEFAULT_MODEL);
+  return {
+    model: resolvedModel,
     prompt,
     size: SIZE_OPTIONS[size] || size,
     extra_body
   };
+}
+
+export async function generateImage({
+  prompt,
+  size = '1024x768',
+  model,
+  images
+}) {
+  const payload = buildImagePayload({ prompt, size, model, images });
 
   const res = await fetch(IMAGE_ENDPOINT, {
     method: 'POST',
