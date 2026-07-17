@@ -11,7 +11,7 @@ import membershipRoutes, { publicUser } from './routes/membership.js';
 import uploadRoutes from './routes/uploads.js';
 import { authMiddleware } from './middleware/auth.js';
 import { prisma } from './lib/prisma.js';
-import { createAIClient } from './lib/ai.js';
+import { createAIClient, getFallbackModes } from './lib/ai.js';
 import { ensureSchema } from './lib/ensure-schema.js';
 import { resumeStuckTasks } from './lib/task-runner.js';
 import { UPLOAD_DIR, ensureUploadDir } from './lib/public-url.js';
@@ -47,10 +47,16 @@ await ensureSchema();
 
 app.listen(port, async () => {
   const client = createAIClient();
+  const fallbacks = getFallbackModes();
   console.log(`AI Writer API running at http://localhost:${port}`);
   console.log('AI baseURL:', client.baseURL);
   console.log('AI model:', process.env.AI_MODEL);
   console.log('AI mode:', process.env.AI_MODE || 'api');
+  if (fallbacks.length) {
+    console.log('AI fallback:', fallbacks.join(' → '));
+  } else {
+    console.log('AI fallback: off');
+  }
   console.log('Task mode: async (pending -> processing -> completed/failed)');
   try {
     await resumeStuckTasks();

@@ -1,0 +1,16 @@
+{
+  "name": "AI Writer",
+  "appid": "",
+  "description": "AI 文案生成平台",
+  "versionName": "0.1.0",
+  "versionCode": "100",
+  "h5": {
+    "title": "AI Writer",
+    "router": {
+      "mode": "hash"
+    },
+    "devServer": {
+      "port": 5173
+    }
+  }
+}

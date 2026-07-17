@@ -1,0 +1,92 @@
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "sqlite"
+  url      = env("DATABASE_URL")
+}
+
+model User {
+  id             String   @id @default(cuid())
+  phone          String   @unique
+  passwordHash   String
+  nickName       String   @default("用户")
+  memberPlan     String   @default("none")
+  memberExpireAt DateTime?
+  isAgent        Boolean  @default(false)
+  agentRate      Float    @default(0)
+  inviteCode     String?  @unique
+  invitedBy      String?
+  createdAt      DateTime @default(now())
+  records        GenerationRecord[]
+  orders         MembershipOrder[]
+  commissions    AgentCommission[] @relation("AgentCommissions")
+}
+
+model MembershipOrder {
+  id        String   @id @default(cuid())
+  userId    String
+  user      User     @relation(fields: [userId], references: [id])
+  planId    String
+  planName  String
+  amount    Float
+  status    String   @default("pending")
+  paidAt    DateTime?
+  createdAt DateTime @default(now())
+}
+
+model AgentCommission {
+  id          String   @id @default(cuid())
+  agentId     String
+  agent       User     @relation("AgentCommissions", fields: [agentId], references: [id])
+  fromUserId  String
+  orderId     String
+  orderAmount Float
+  rate        Float
+  amount      Float
+  status      String   @default("settled")
+  createdAt   DateTime @default(now())
+}
+
+model TemplateCategory {
+  id        String     @id @default(cuid())
+  name      String
+  sort      Int        @default(0)
+  templates Template[]
+}
+
+model Template {
+  id          String           @id @default(cuid())
+  categoryId  String
+  category    TemplateCategory @relation(fields: [categoryId], references: [id])
+  name        String
+  description String
+  icon        String           @default("📝")
+  prompt      String
+  fields      String           @default("[]")
+  sort        Int              @default(0)
+  records     GenerationRecord[]
+}
+
+model GenerationRecord {
+  id         String   @id @default(cuid())
+  userId     String
+  user       User     @relation(fields: [userId], references: [id])
+  templateId String
+  template   Template @relation(fields: [templateId], references: [id])
+  parentId   String?
+  parent     GenerationRecord?  @relation("TaskChildren", fields: [parentId], references: [id])
+  children   GenerationRecord[] @relation("TaskChildren")
+  taskType   String   @default("text")
+  status     String   @default("pending")
+  input      String
+  output     String   @default("")
+  imageUrl   String?
+  imageUrls  String?
+  imageMeta  String?
+  imageSize  String?
+  error      String?
+  createdAt  DateTime @default(now())
+  updatedAt  DateTime @updatedAt
+}

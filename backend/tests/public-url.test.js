@@ -124,3 +124,29 @@ describe('resolveAgnesImageUrl PUBLIC_BASE_URL fallback', () => {
     assert.equal(u, 'https://cdn.example.com/uploads/product.jpg');
   });
 });
+
+describe('mirrorRemoteImageToUpload', () => {
+  it('returns local path as-is', async () => {
+    const { mirrorRemoteImageToUpload } = await import('../src/lib/public-url.js');
+    assert.equal(await mirrorRemoteImageToUpload('/uploads/a.jpg'), '/uploads/a.jpg');
+  });
+
+  it('downloads remote image into uploads', async () => {
+    const { mirrorRemoteImageToUpload, UPLOAD_DIR: dir } = await import('../src/lib/public-url.js');
+    const originalFetch = globalThis.fetch;
+    globalThis.fetch = async () => ({
+      ok: true,
+      headers: { get: () => 'image/png' },
+      arrayBuffer: async () => Buffer.alloc(128, 1)
+    });
+    try {
+      const local = await mirrorRemoteImageToUpload('https://cdn.example.com/pic.png');
+      assert.match(local, /^\/uploads\/.+\.png$/);
+      const file = path.join(dir, path.basename(local));
+      assert.equal(fs.existsSync(file), true);
+      fs.unlinkSync(file);
+    } finally {
+      globalThis.fetch = originalFetch;
+    }
+  });
+});

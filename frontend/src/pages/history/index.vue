@@ -25,7 +25,7 @@
           </text>
         </view>
         <text class="time">{{ formatTime(item.updatedAt || item.createdAt) }}</text>
-        <view v-if="item.imageUrls?.length && item.status === 'completed'" class="thumb-row">
+        <view v-if="item.imageUrls?.length && (item.status === 'completed' || item.status === 'failed')" class="thumb-row">
           <view
             v-for="(thumb, idx) in getThumbs(item)"
             :key="thumb.url + idx"
@@ -83,12 +83,22 @@ const IMAGE_TYPE_LABELS = {
 };
 
 function getThumbs(item) {
-  const urls = (item.imageUrls || []).slice(0, 3);
+  const seen = new Set();
   const meta = item.imageMeta || [];
-  return urls.map((url, i) => ({
-    url: meta[i]?.url || url,
-    label: IMAGE_TYPE_LABELS[meta[i]?.type] || ''
-  }));
+  const fromMeta = meta
+    .filter((m) => m?.url)
+    .map((m) => ({
+      url: m.url,
+      label: IMAGE_TYPE_LABELS[m.type] || ''
+    }))
+    .filter((t) => {
+      if (seen.has(t.url)) return false;
+      seen.add(t.url);
+      return true;
+    })
+    .slice(0, 3);
+  if (fromMeta.length) return fromMeta;
+  return (item.imageUrls || []).slice(0, 3).map((url) => ({ url, label: '' }));
 }
 
 async function loadTasks() {

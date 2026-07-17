@@ -10,7 +10,7 @@ describe('buildImagePayload', () => {
       images: ['https://cdn.example.com/ref.jpg']
     });
 
-    assert.equal(payload.model, 'agnes-image-2.0-flash');
+    assert.equal(payload.model, 'agnes-image-2.1-flash');
     assert.deepEqual(payload.extra_body.image, ['https://cdn.example.com/ref.jpg']);
     assert.equal(payload.extra_body.response_format, 'url');
     assert.equal(payload.size, '1024x1024');

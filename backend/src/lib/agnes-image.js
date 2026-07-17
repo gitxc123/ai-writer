@@ -45,7 +45,7 @@ export function buildImagePayload({ prompt, size = '1024x768', model, images }) 
     extra_body.image = images;
   }
   const resolvedModel = images?.length
-    ? (model || 'agnes-image-2.0-flash')
+    ? (model || 'agnes-image-2.1-flash')
     : (model || DEFAULT_MODEL);
   return {
     model: resolvedModel,
@@ -87,24 +87,100 @@ export async function generateImage({
   return url;
 }
 
-export async function generateImageFromRefs({ prompt, images, size = 'square' }) {
-  if (!images?.length) throw new Error('缺少参考图');
-  return generateImage({
-    prompt,
-    size,
-    images,
-    model: 'agnes-image-2.0-flash'
-  });
+function sleep(ms) {
+  return new Promise((resolve) => setTimeout(resolve, ms));
 }
+
+function isRetryableImageError(err) {
+  const msg = String(err?.message || err || '').toLowerCase();
+  return (
+    msg.includes('queue is full') ||
+    msg.includes('retry later') ||
+    msg.includes('rate limit') ||
+    msg.includes('too many') ||
+    msg.includes('timeout') ||
+    msg.includes('aborted') ||
+    msg.includes('503') ||
+    msg.includes('502') ||
+    msg.includes('429') ||
+    msg.includes('invalid argument returned 22') ||
+    msg.includes('comfyui')
+  );
+}
+
+export async function generateImageFromRefs({
+  prompt,
+  images,
+  size = 'square',
+  model,
+  retries = 3,
+  refreshImages
+}) {
+  if (!images?.length) throw new Error('缺少参考图');
+
+  let lastErr;
+  let refs = images;
+  let refreshed = false;
+
+  for (let attempt = 0; attempt <= retries; attempt += 1) {
+    try {
+      // 2.1 更偏构图/主体保留；产品保真优先用它
+      return await generateImage({
+        prompt,
+        size,
+        images: refs,
+        model: model || 'agnes-image-2.1-flash'
+      });
+    } catch (err) {
+      lastErr = err;
+      const retryable = isRetryableImageError(err);
+      const msg = String(err.message || '');
+      // 多参考图失败时，降级成只用第一张再试
+      if (refs.length > 1 && /invalid argument/i.test(msg)) {
+        console.warn('[agnes-image] multi-ref failed, fallback to primary ref');
+        refs = [images[0]];
+      } else if (!refreshed && typeof refreshImages === 'function' && /invalid argument|comfyui/i.test(msg)) {
+        try {
+          const next = await refreshImages(refs);
+          if (Array.isArray(next) && next.length) {
+            refs = next;
+            refreshed = true;
+            console.warn('[agnes-image] refreshed image host after Comfy error');
+          }
+        } catch (e) {
+          console.warn('[agnes-image] refreshImages failed', e.message);
+        }
+      }
+      if (!retryable || attempt === retries) break;
+      const queueBusy = /queue is full|retry later|rate limit|429|too many/i.test(msg);
+      // 队列满时多等一会儿，比立刻连打更容易成功
+      const waitMs = queueBusy
+        ? Math.min(45000, 6000 * 2 ** attempt)
+        : Math.min(20000, 3000 * 2 ** attempt);
+      console.warn(
+        `[agnes-image] retry ${attempt + 1}/${retries} after ${waitMs}ms:`,
+        err.message
+      );
+      await sleep(waitMs);
+    }
+  }
+
+  throw lastErr || new Error('配图失败');
+}
+
+import { toUserErrorMessage } from './user-error.js';
 
 export function formatImageError(err) {
   const msg = err?.message || '未知错误';
-  if (msg.includes('请配置')) return msg;
+  if (/请配置|未配置/.test(msg)) return '服务未配置完成，请联系管理员';
   if (msg.includes('401') || msg.toLowerCase().includes('unauthorized')) {
-    return 'Agnes API Key 无效';
+    return '服务授权失败，请联系管理员';
   }
-  if (msg.includes('timeout') || msg.includes('aborted')) {
+  if (/timeout|aborted|超时/i.test(msg)) {
     return '配图生成超时，请稍后重试';
   }
-  return `配图失败：${msg}`;
+  if (/503|busy|unavailable/i.test(msg)) {
+    return '服务繁忙，请稍后再试';
+  }
+  return toUserErrorMessage(err, '配图生成失败，请稍后重试');
 }

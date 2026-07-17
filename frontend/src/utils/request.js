@@ -109,6 +109,11 @@ export const api = {
   generateImage: (data) => request({ url: '/images/generate', method: 'POST', data }),
   getRecords: () => request({ url: '/records' }),
   getRecord: (id) => request({ url: `/records/${id}` }),
+  retryRecord: (id) => request({ url: `/records/${id}/retry`, method: 'POST' }),
+  regenerateRecordImage: (id, index) =>
+    request({ url: `/records/${id}/images/${index}/regenerate`, method: 'POST' }),
+  localizeRecordImages: (id) =>
+    request({ url: `/records/${id}/localize-images`, method: 'POST' }),
   resumeTasks: () => request({ url: '/records/resume', method: 'POST' }),
   getHotTopics: (params = {}) => {
     const q = new URLSearchParams();

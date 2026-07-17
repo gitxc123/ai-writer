@@ -24,7 +24,6 @@ const upload = multer({
 });
 
 const router = Router();
-const SLOTS = new Set(['front', 'side', 'detail']);
 
 router.post('/product', authMiddleware, (req, res) => {
   upload.single('file')(req, res, (err) => {
@@ -34,7 +33,8 @@ router.post('/product', authMiddleware, (req, res) => {
     if (!req.file) {
       return res.status(400).json({ code: 400, message: '缺少文件' });
     }
-    const slot = SLOTS.has(req.body?.slot) ? req.body.slot : 'front';
+    const slotRaw = String(req.body?.slot || '').trim();
+    const slot = slotRaw || `ref-${Date.now()}`;
     const url = `/uploads/${req.file.filename}`;
     res.json({ code: 200, data: { slot, url, filename: req.file.filename } });
   });

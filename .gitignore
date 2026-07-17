@@ -1,6 +1,9 @@
 node_modules/
 dist/
+unpackage/
 .env
+.env.*
+!.env.example
 *.db
 *.db-journal
 .DS_Store
@@ -9,3 +12,16 @@ dist/
 
 backend/uploads/*
 !backend/uploads/.gitkeep
+
+# local tunnel / DNS temp files
+.api-trycf-ip.txt
+.cloudflared-hosts-ok.txt
+.dns-*
+.nrpt-*
+.patch-hosts.ps1
+.dns-stub.js
+
+# local debug dumps
+*-out.txt
+backend/fix-db-out.txt
+backend/scripts/*-out.txt
