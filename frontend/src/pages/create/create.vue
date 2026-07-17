@@ -275,7 +275,7 @@
       </view>
 
       <text class="peak-hint">高峰期（如晚间）服务可能繁忙，文案或配图偶发失败属正常，失败后可在任务列表重试。</text>
-      <text class="quota-hint">每日限 {{ dailyGenerateLimit }} 次创作；提交间隔至少 5 秒。不要堆数量，爆款靠精而不靠多。</text>
+      <text class="quota-hint">每日最多 {{ dailyGenerateLimit }} 次；未达上限可继续提交，建议精做少堆。提交间隔至少 5 秒。</text>
       <view class="btn" :class="{ disabled: submitting }" @click="submitTask">
         {{ submitting ? '提交中...' : submitLabel }}
       </view>
@@ -410,7 +410,7 @@ const imageMeta = ref([]);
 const imageCount = ref(1);
 const imageSource = ref('ai');
 const submitting = ref(false);
-const dailyGenerateLimit = ref(10);
+const dailyGenerateLimit = ref(30);
 const lastSubmitAt = ref(0);
 const SUBMIT_COOLDOWN_MS = 5000;
 const templateId = ref('');
@@ -961,7 +961,7 @@ onMounted(async () => {
     try {
       const cfg = await api.getMembershipConfig();
       if (cfg?.dailyGenerateLimit) {
-        dailyGenerateLimit.value = Number(cfg.dailyGenerateLimit) || 10;
+        dailyGenerateLimit.value = Number(cfg.dailyGenerateLimit) || 30;
       }
     } catch {
       // ignore

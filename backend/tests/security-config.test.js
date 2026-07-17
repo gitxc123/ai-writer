@@ -70,10 +70,10 @@ describe('isDemoPayEnabled', () => {
 });
 
 describe('getDailyGenerateLimit', () => {
-  it('defaults to 10', () => {
+  it('defaults to 30', () => {
     const prev = process.env.DAILY_GENERATE_LIMIT;
     delete process.env.DAILY_GENERATE_LIMIT;
-    assert.equal(getDailyGenerateLimit(), 10);
+    assert.equal(getDailyGenerateLimit(), 30);
     if (prev !== undefined) process.env.DAILY_GENERATE_LIMIT = prev;
   });
 });

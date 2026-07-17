@@ -95,7 +95,7 @@ export function isDemoPayEnabled() {
 export function getDailyGenerateLimit() {
   const n = Number(process.env.DAILY_GENERATE_LIMIT);
   if (Number.isFinite(n) && n > 0) return Math.floor(n);
-  return 10;
+  return 30;
 }
 
 /** 启动时调用；失败则 process.exit(1) */
