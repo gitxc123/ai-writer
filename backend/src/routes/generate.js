@@ -20,7 +20,8 @@ import { checkInputsSafety } from '../lib/content-guard.js';
 import {
   checkSubmitCooldown,
   markSubmitCooldown,
-  QUALITY_OVER_QUANTITY_TIP
+  pickQualityTip,
+  QUALITY_TIPS
 } from '../lib/submit-cooldown.js';
 
 const router = Router();
@@ -55,7 +56,7 @@ router.post('/', authMiddleware, async (req, res) => {
     if (usage.used >= usage.limit) {
       return res.status(429).json({
         code: 429,
-        message: `今日创作次数已达上限（${usage.limit} 次）。${QUALITY_OVER_QUANTITY_TIP}。请明天再试`,
+        message: `今日创作次数已达上限（${usage.limit} 次）。${QUALITY_TIPS[0]}请明天再试。`,
         used: usage.used,
         limit: usage.limit
       });
@@ -160,7 +161,7 @@ router.post('/', authMiddleware, async (req, res) => {
     enqueueGenerationTask(task.id);
 
     const usedAfter = usage.used + 1;
-    const isRepeatSubmit = usage.used >= 1;
+    const tip = pickQualityTip(usedAfter);
 
     res.json({
       code: 200,
@@ -173,9 +174,7 @@ router.post('/', authMiddleware, async (req, res) => {
         used: usedAfter,
         limit: usage.limit,
         remaining: Math.max(0, usage.limit - usedAfter),
-        ...(isRepeatSubmit
-          ? { tip: QUALITY_OVER_QUANTITY_TIP, qualityTip: QUALITY_OVER_QUANTITY_TIP }
-          : {})
+        ...(tip ? { tip, qualityTip: tip } : {})
       }
     });
   } catch (err) {

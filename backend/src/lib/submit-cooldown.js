@@ -40,4 +40,28 @@ export function clearSubmitCooldown(userId) {
   if (userId) lastSubmitAt.delete(userId);
 }
 
-export const QUALITY_OVER_QUANTITY_TIP = '不要堆数量，爆款靠精而不靠多';
+/** 当天第 N 次提交起开始轮流提醒（含第 N 次） */
+export const QUALITY_TIP_FROM_COUNT = 11;
+
+/** 润色后的质量提醒，按提交次数轮流展示 */
+export const QUALITY_TIPS = [
+  '少做几条、打磨到位，比堆一堆半成品更有爆款机会。',
+  '内容贵在精准：先想清楚读者要什么，再动笔往往更稳。',
+  '宁可少发一条精品，也不要用数量稀释质量。',
+  '热点会过，表达力留得住——把这一条写透再说。',
+  '节奏放慢一点：选题、标题、结构各抠一遍，转化通常更好。'
+];
+
+/** @deprecated 兼容旧引用；请用 pickQualityTip / QUALITY_TIPS */
+export const QUALITY_OVER_QUANTITY_TIP = QUALITY_TIPS[0];
+
+/**
+ * @param {number} usedAfter 含本次在内的今日已用次数
+ * @returns {string | null}
+ */
+export function pickQualityTip(usedAfter) {
+  const n = Math.floor(Number(usedAfter) || 0);
+  if (n < QUALITY_TIP_FROM_COUNT) return null;
+  const idx = (n - QUALITY_TIP_FROM_COUNT) % QUALITY_TIPS.length;
+  return QUALITY_TIPS[idx];
+}

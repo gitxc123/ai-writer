@@ -1,6 +1,6 @@
 import { prisma } from './prisma.js';
 import { getDailyGenerateLimit } from './security-config.js';
-import { QUALITY_OVER_QUANTITY_TIP } from './submit-cooldown.js';
+import { QUALITY_TIPS } from './submit-cooldown.js';
 
 export function startOfLocalDay(d = new Date()) {
   const x = new Date(d);
@@ -34,7 +34,7 @@ export async function checkDailyGenerateQuota(userId) {
     return {
       used,
       limit,
-      message: `今日创作次数已达上限（${limit} 次）。${QUALITY_OVER_QUANTITY_TIP}。请明天再试`
+      message: `今日创作次数已达上限（${limit} 次）。${QUALITY_TIPS[0]}请明天再试。`
     };
   }
   return null;

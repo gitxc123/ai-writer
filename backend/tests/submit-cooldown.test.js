@@ -4,7 +4,9 @@ import {
   checkSubmitCooldown,
   markSubmitCooldown,
   clearSubmitCooldown,
-  QUALITY_OVER_QUANTITY_TIP,
+  pickQualityTip,
+  QUALITY_TIPS,
+  QUALITY_TIP_FROM_COUNT,
   DEFAULT_SUBMIT_COOLDOWN_MS
 } from '../src/lib/submit-cooldown.js';
 
@@ -27,6 +29,20 @@ describe('submit cooldown', () => {
 
   it('exports tip copy', () => {
     assert.equal(DEFAULT_SUBMIT_COOLDOWN_MS, 5000);
-    assert.match(QUALITY_OVER_QUANTITY_TIP, /精而不靠多/);
+    assert.equal(QUALITY_TIP_FROM_COUNT, 11);
+    assert.ok(QUALITY_TIPS.length >= 3);
+  });
+});
+
+describe('pickQualityTip', () => {
+  it('stays silent before 11th', () => {
+    assert.equal(pickQualityTip(1), null);
+    assert.equal(pickQualityTip(10), null);
+  });
+
+  it('starts at 11th and rotates', () => {
+    assert.equal(pickQualityTip(11), QUALITY_TIPS[0]);
+    assert.equal(pickQualityTip(12), QUALITY_TIPS[1]);
+    assert.equal(pickQualityTip(11 + QUALITY_TIPS.length), QUALITY_TIPS[0]);
   });
 });

@@ -275,7 +275,7 @@
       </view>
 
       <text class="peak-hint">高峰期（如晚间）服务可能繁忙，文案或配图偶发失败属正常，失败后可在任务列表重试。</text>
-      <text class="quota-hint">每日最多 {{ dailyGenerateLimit }} 次；未达上限可继续提交，建议精做少堆。提交间隔至少 5 秒。</text>
+      <text class="quota-hint">每日最多 {{ dailyGenerateLimit }} 次；从第 11 次起会轮流提醒精做。提交间隔至少 5 秒。</text>
       <view class="btn" :class="{ disabled: submitting }" @click="submitTask">
         {{ submitting ? '提交中...' : submitLabel }}
       </view>
