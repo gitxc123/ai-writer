@@ -1,0 +1,15 @@
+node_modules
+**/node_modules
+.git
+.superpowers
+backend/uploads
+backend/prisma/*.db
+backend/prisma/*.db-journal
+backend/data
+frontend/dist
+*.md
+.api-*
+.dns-*
+.nrpt-*
+.cloudflared*
+.patch-hosts.ps1

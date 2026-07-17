@@ -43,6 +43,10 @@ npm run dev:h5
 
 前端地址：http://localhost:5173
 
+## 云平台部署
+
+前后端可打包为一个服务部署到 Railway，见 [DEPLOY.md](./DEPLOY.md)。
+
 ## 环境变量 (backend/.env)
 
 | 变量 | 说明 |
