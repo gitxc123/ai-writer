@@ -4,12 +4,13 @@ function getToken() {
   return uni.getStorageSync('token') || '';
 }
 
-export function request({ url, method = 'GET', data }) {
+export function request({ url, method = 'GET', data, timeout = 45000 }) {
   return new Promise((resolve, reject) => {
     uni.request({
       url: BASE_URL + url,
       method,
       data,
+      timeout,
       header: {
         'Content-Type': 'application/json',
         Authorization: getToken() ? `Bearer ${getToken()}` : ''
@@ -37,7 +38,14 @@ export function request({ url, method = 'GET', data }) {
           reject(new Error(res.data?.message || '请求失败'));
         }
       },
-      fail: (err) => reject(err)
+      fail: (err) => {
+        const msg = String(err?.errMsg || err?.message || '');
+        if (/timeout|超时/i.test(msg)) {
+          reject(new Error('请求超时，请稍后重试'));
+          return;
+        }
+        reject(err instanceof Error ? err : new Error(msg || '网络异常'));
+      }
     });
   });
 }

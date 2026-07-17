@@ -8,7 +8,8 @@
       </view>
     </view>
 
-    <view v-if="records.length === 0 && !loading" class="empty">暂无任务</view>
+    <view v-if="loading" class="empty">任务加载中…</view>
+    <view v-else-if="records.length === 0" class="empty">暂无任务</view>
 
     <view
       v-for="item in records"
@@ -102,11 +103,13 @@ function getThumbs(item) {
 
 async function loadTasks() {
   if (!userStore.isLogin) return;
+  if (loading.value) return;
   loading.value = true;
   try {
-    records.value = await api.getRecords();
+    const list = await api.getRecords();
+    records.value = Array.isArray(list) ? list : [];
   } catch (e) {
-    uni.showToast({ title: e.message, icon: 'none' });
+    uni.showToast({ title: e.message || '任务加载失败', icon: 'none', duration: 2500 });
   } finally {
     loading.value = false;
   }

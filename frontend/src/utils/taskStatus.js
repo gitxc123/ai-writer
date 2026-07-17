@@ -65,5 +65,7 @@ export function getPreviewText(item) {
           : 'AI配图';
     return `图文已完成 · ${item.imageUrls.length} 张${source}`;
   }
-  return item.output ? `${item.output.slice(0, 80)}...` : '暂无内容';
+  return item.outputPreview || item.output
+    ? `${String(item.outputPreview || item.output).slice(0, 80)}...`
+    : '暂无内容';
 }

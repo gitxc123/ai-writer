@@ -198,10 +198,22 @@ router.get('/', authMiddleware, async (req, res) => {
   let records = await prisma.generationRecord.findMany({
     where: { userId: req.userId },
     orderBy: { createdAt: 'desc' },
-    include: {
+    take: 50,
+    select: {
+      id: true,
+      status: true,
+      error: true,
+      output: true,
+      taskType: true,
+      parentId: true,
+      imageUrl: true,
+      imageUrls: true,
+      imageMeta: true,
+      createdAt: true,
+      updatedAt: true,
+      input: true,
       template: { select: { name: true, icon: true } }
-    },
-    take: 100
+    }
   });
   records = await hydrateImageMeta(records);
 
@@ -223,16 +235,40 @@ router.get('/', authMiddleware, async (req, res) => {
     try {
       const input = JSON.parse(record.input || '{}');
       imageCount = Number(input.imageCount) || 0;
-      imageSource = input.imageSource === 'web' ? 'web' : 'ai';
+      imageSource =
+        input.imageSource === 'web'
+          ? 'web'
+          : input.imageSource === 'product'
+            ? 'product'
+            : 'ai';
     } catch {
       imageCount = imageUrls.length;
     }
+
+    // 列表不返回全文，避免大包导致 H5 卡死/超时
+    const outputText = String(record.output || '');
+    const preview = outputText.slice(0, 100);
+    const thumbs = imageUrls.filter(Boolean).slice(0, 3);
+    const thumbMeta = (Array.isArray(imageMeta) ? imageMeta : [])
+      .filter((m) => m?.url)
+      .slice(0, 3);
+
     return signRecordImageFields({
-      ...record,
-      imageUrls,
-      imageMeta,
+      id: record.id,
+      status: record.status,
+      error: record.error,
+      taskType: record.taskType,
+      parentId: record.parentId,
+      createdAt: record.createdAt,
+      updatedAt: record.updatedAt,
+      template: record.template,
       imageCount,
-      imageSource
+      imageSource,
+      imageUrl: thumbs[0] || record.imageUrl || null,
+      imageUrls: thumbs,
+      imageMeta: thumbMeta,
+      outputPreview: preview,
+      output: preview
     });
   });
 
