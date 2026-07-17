@@ -1,22 +1,18 @@
 /**
- * 清理超过留存期的生成记录（默认 180 天）。
+ * 清理超过留存期的生成记录、本地配图与任务日志。
  * 用法：node scripts/purge-old-records.js
  * 环境变量：RECORD_RETENTION_DAYS=180（可选）
  *
- * 默认不挂 cron，请按需手动执行。
+ * 生产可由进程内 AUTO_PURGE 定时执行；本脚本供手动 / cron 调用。
  */
 import 'dotenv/config';
 import { prisma } from '../src/lib/prisma.js';
+import { purgeExpiredRecords } from '../src/lib/retention.js';
 
-const days = Number(process.env.RECORD_RETENTION_DAYS || 180);
-const cutoff = new Date(Date.now() - days * 24 * 60 * 60 * 1000);
-
-const result = await prisma.generationRecord.deleteMany({
-  where: { createdAt: { lt: cutoff } }
-});
+const result = await purgeExpiredRecords();
 
 console.log(
-  `[purge-old-records] retention=${days}d cutoff=${cutoff.toISOString()} deleted=${result.count}`
+  `[purge-old-records] retention=${result.days}d cutoff=${result.cutoff} records=${result.records} files=${result.files} taskLogs=${result.taskLogs}`
 );
 
 await prisma.$disconnect();

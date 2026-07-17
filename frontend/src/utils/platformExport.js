@@ -1,4 +1,4 @@
-import { splitArticleOutput } from './articleOutput.js';
+import { splitArticleOutput, buildCompactComplianceNote } from './articleOutput.js';
 import { clampToutiaoTitle, TOUTIAO_TITLE_MAX } from './platformLimits.js';
 
 const PLATFORM_MAP = {
@@ -78,16 +78,31 @@ function pickTitleAndBody(body = '') {
   return { title, paras: rest };
 }
 
+/** 粘贴用公网图链：仅允许 http(s) 与 /uploads/，拒绝 javascript: 等危险协议 */
+export function safeExportImageUrl(raw) {
+  const u = String(raw || '').trim();
+  if (!u) return '';
+  if (u.startsWith('/uploads/')) {
+    const pathOnly = u.split('?')[0];
+    // 禁止路径穿越式伪装
+    if (pathOnly.includes('..') || pathOnly.includes('\\') || pathOnly.includes('\0')) return '';
+    return u;
+  }
+  if (/^https?:\/\//i.test(u)) return u;
+  return '';
+}
+
 /** 粘贴用公网图链：优先原始远程地址，避免 /uploads 本机路径 */
 function exportImageUrl(item) {
   const remote = item?.remoteUrl;
-  if (remote && /^https?:\/\//i.test(remote)) return remote;
-  const url = item?.url || '';
-  return url;
+  const remoteSafe = safeExportImageUrl(remote);
+  if (remoteSafe && /^https?:\/\//i.test(remoteSafe)) return remoteSafe;
+  return safeExportImageUrl(item?.url || '');
 }
 
 function imageBlockHtml(item, idx) {
   const src = exportImageUrl(item);
+  if (!src) return '';
   const notes = [];
   if (item.caption) notes.push(`图${idx + 1}：${escapeHtml(item.caption)}`);
   const isAi = item.sourceType === 'ai' || /AI\s*生成/.test(String(item.credit || ''));
@@ -99,7 +114,7 @@ function imageBlockHtml(item, idx) {
   const caption = notes.length
     ? `<p style="color:#888;font-size:13px;margin:6px 0 14px;">${notes.join(' · ')}</p>`
     : '';
-  return `<p style="margin:16px 0;text-align:center;"><img src="${src}" alt="${escapeHtml(item.caption || `配图${idx + 1}`)}" style="max-width:100%;height:auto;border-radius:6px;" /></p>${caption}`;
+  return `<p style="margin:16px 0;text-align:center;"><img src="${escapeHtml(src)}" alt="${escapeHtml(item.caption || `配图${idx + 1}`)}" style="max-width:100%;height:auto;border-radius:6px;" /></p>${caption}`;
 }
 
 function imageBlockText(item, idx) {
@@ -119,7 +134,7 @@ export function buildPlatformPack({ templateName, output, images = [] }) {
   const { body, footer } = splitArticleOutput(output || '');
   let { title, paras } = pickTitleAndBody(body);
   const imgs = (images || []).filter((i) => exportImageUrl(i));
-  const showFooter = platform.id !== 'xhs' && footer;
+  const showFooter = Boolean(footer) && platform.id !== 'xhs';
 
   if (platform.id === 'toutiao') {
     title = clampToutiaoTitle(title);
@@ -206,6 +221,10 @@ export function buildPlatformPack({ templateName, output, images = [] }) {
       html += `<p style="font-size:12px;color:#999;line-height:1.6;margin:4px 0;">${escapeHtml(p)}</p>`;
       text += `${p}\n`;
     });
+  } else if (platform.id === 'xhs') {
+    const note = buildCompactComplianceNote({ footer, images: imgs });
+    html += `<p style="color:#888;font-size:12px;margin-top:12px;line-height:1.5;">${escapeHtml(note)}</p>`;
+    text += `\n${note}\n`;
   }
 
   return {

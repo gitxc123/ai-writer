@@ -1,6 +1,8 @@
 import { Router } from 'express';
 import { prisma } from '../lib/prisma.js';
 import { logTask } from '../lib/logger.js';
+import { deleteUploadFilesForRecord } from '../lib/upload-cleanup.js';
+import { getRecordRetentionDays } from '../lib/retention.js';
 
 const router = Router();
 
@@ -45,8 +47,10 @@ router.get('/meta', (_req, res) => {
   res.json({
     code: 200,
     data: {
-      email: process.env.COMPLAINT_EMAIL || '741952213@qq.com',
-      retentionDays: 180
+      email: process.env.COMPLAINT_EMAIL || '',
+      retentionDays: getRecordRetentionDays(),
+      responseSlaDays: Number(process.env.COMPLAINT_SLA_DAYS || 15),
+      operatorName: process.env.OPERATOR_NAME || ''
     }
   });
 });
@@ -130,6 +134,8 @@ router.post('/admin/:id/takedown', requireAdmin, async (req, res) => {
       return res.json({ code: 200, data: { message: '记录已不存在，投诉已关闭' } });
     }
 
+    const filesDeleted = deleteUploadFilesForRecord(record);
+
     await prisma.generationRecord.update({
       where: { id: record.id },
       data: {
@@ -151,9 +157,15 @@ router.post('/admin/:id/takedown', requireAdmin, async (req, res) => {
       }
     });
 
-    console.log('[complaint] takedown', complaint.id, 'record=', record.id);
-    await logTask(record.id, 'warn', 'takedown by complaint', { complaintId: complaint.id });
-    res.json({ code: 200, data: { message: '已下架', recordId: record.id } });
+    console.log('[complaint] takedown', complaint.id, 'record=', record.id, 'files=', filesDeleted);
+    await logTask(record.id, 'warn', 'takedown by complaint', {
+      complaintId: complaint.id,
+      filesDeleted
+    });
+    res.json({
+      code: 200,
+      data: { message: '已下架', recordId: record.id, filesDeleted }
+    });
   } catch (err) {
     console.error('[complaint:takedown]', err);
     res.status(500).json({ code: 500, message: '下架失败' });

@@ -62,7 +62,9 @@ const MIGRATIONS = [
     createdAt DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP
   )`,
   'CREATE INDEX IF NOT EXISTS TaskLog_createdAt_idx ON TaskLog(createdAt)',
-  'CREATE INDEX IF NOT EXISTS TaskLog_taskId_createdAt_idx ON TaskLog(taskId, createdAt)'
+  'CREATE INDEX IF NOT EXISTS TaskLog_taskId_createdAt_idx ON TaskLog(taskId, createdAt)',
+  'ALTER TABLE User ADD COLUMN termsAcceptedAt DATETIME',
+  'ALTER TABLE User ADD COLUMN ageConfirmedAt DATETIME'
 ];
 
 export async function ensureSchema() {

@@ -23,6 +23,9 @@ import { UPLOAD_DIR, ensureUploadDir } from './lib/public-url.js';
 import { purgeTaskLogs } from './lib/logger.js';
 import { assertSecurityOnBoot } from './lib/security-config.js';
 import { rateLimit, ipKey, userOrIpKey } from './lib/rate-limit.js';
+import { buildCorsOptions } from './lib/cors-config.js';
+import { startRetentionScheduler } from './lib/retention.js';
+import { uploadAccessMiddleware } from './lib/upload-access.js';
 
 assertSecurityOnBoot();
 
@@ -35,9 +38,9 @@ const staticDir = process.env.STATIC_DIR
   : path.resolve(__dirname, '../public');
 
 ensureUploadDir();
-app.use(cors());
+app.use(cors(buildCorsOptions()));
 app.use(express.json({ limit: '2mb' }));
-app.use('/uploads', express.static(UPLOAD_DIR));
+app.use('/uploads', uploadAccessMiddleware, express.static(UPLOAD_DIR));
 
 app.get('/api/health', (_req, res) => {
   res.json({ code: 200, message: 'ok' });
@@ -125,4 +128,5 @@ app.listen(port, '0.0.0.0', async () => {
   } catch (err) {
     console.error('[task:resume] failed', err.message);
   }
+  startRetentionScheduler();
 });

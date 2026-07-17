@@ -1,19 +1,19 @@
 import { describe, it } from 'node:test';
 import assert from 'node:assert/strict';
 import {
-  DEFAULT_LOG_VIEWER_PHONE,
   getLogViewerPhone,
   canViewLogs,
   clampLogLimit,
-  serializeMeta
+  serializeMeta,
+  maskPhone
 } from '../src/lib/logger.js';
 
 describe('log viewer phone', () => {
-  it('defaults to hardcoded phone', () => {
+  it('requires LOG_VIEWER_PHONE env (no hardcoded default)', () => {
     const prev = process.env.LOG_VIEWER_PHONE;
     delete process.env.LOG_VIEWER_PHONE;
-    assert.equal(getLogViewerPhone(), DEFAULT_LOG_VIEWER_PHONE);
-    assert.equal(DEFAULT_LOG_VIEWER_PHONE, '17682160819');
+    assert.equal(getLogViewerPhone(), '');
+    assert.equal(canViewLogs('17682160819'), false);
     if (prev !== undefined) process.env.LOG_VIEWER_PHONE = prev;
   });
 
@@ -26,14 +26,11 @@ describe('log viewer phone', () => {
     if (prev === undefined) delete process.env.LOG_VIEWER_PHONE;
     else process.env.LOG_VIEWER_PHONE = prev;
   });
+});
 
-  it('canViewLogs matches viewer phone', () => {
-    const prev = process.env.LOG_VIEWER_PHONE;
-    delete process.env.LOG_VIEWER_PHONE;
-    assert.equal(canViewLogs('17682160819'), true);
-    assert.equal(canViewLogs('13800000000'), false);
-    assert.equal(canViewLogs(''), false);
-    if (prev !== undefined) process.env.LOG_VIEWER_PHONE = prev;
+describe('maskPhone', () => {
+  it('masks mainland mobile', () => {
+    assert.equal(maskPhone('13812345678'), '138****5678');
   });
 });
 

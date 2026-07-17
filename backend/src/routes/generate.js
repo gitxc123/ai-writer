@@ -16,6 +16,7 @@ import {
   MAX_STORY_CHARS
 } from '../lib/storyboard.js';
 import { checkDailyGenerateQuota } from '../lib/quota.js';
+import { checkInputsSafety } from '../lib/content-guard.js';
 
 const router = Router();
 
@@ -43,6 +44,11 @@ router.post('/', authMiddleware, async (req, res) => {
         used: overQuota.used,
         limit: overQuota.limit
       });
+    }
+
+    const safety = checkInputsSafety(inputs || {});
+    if (!safety.ok) {
+      return res.status(400).json({ code: 400, message: safety.message });
     }
 
     const template = await prisma.template.findUnique({ where: { id: templateId } });

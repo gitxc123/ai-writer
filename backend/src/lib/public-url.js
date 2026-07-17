@@ -1,6 +1,7 @@
 import fs from 'fs';
 import path from 'path';
 import { fileURLToPath } from 'url';
+import { withUploadSignature } from './upload-sign.js';
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 export const UPLOAD_DIR = process.env.UPLOAD_DIR
@@ -34,12 +35,14 @@ export async function resolveAgnesImageUrl(storedUrl) {
   }
 
   if (storedUrl.startsWith('/uploads/')) {
+    const clean = String(storedUrl).split('?')[0];
     const publicBase = (process.env.PUBLIC_BASE_URL || '').replace(/\/$/, '');
     if (isUsablePublicBase(publicBase)) {
-      return `${publicBase}${storedUrl}`;
+      // Agnes 拉取用较短有效期签名
+      return withUploadSignature(`${publicBase}${clean}`, Number(process.env.UPLOAD_SIGN_AGNES_TTL_SEC || 7200));
     }
 
-    const filePath = path.join(UPLOAD_DIR, path.basename(storedUrl));
+    const filePath = path.join(UPLOAD_DIR, path.basename(clean));
     return uploadLocalForAgnes(filePath);
   }
 

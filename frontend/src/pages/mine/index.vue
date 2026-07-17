@@ -54,6 +54,40 @@
         </view>
         <text class="arrow">›</text>
       </view>
+      <view class="menu-item" @click="goContact">
+        <view>
+          <text class="menu-title">联系客服</text>
+          <text class="menu-sub">微信扫码咨询会员与使用问题</text>
+        </view>
+        <text class="arrow">›</text>
+      </view>
+      <view v-if="userStore.isLogin" class="menu-item danger" @click="toggleDeletePanel">
+        <view>
+          <text class="menu-title">注销账号</text>
+          <text class="menu-sub">删除账号、生成记录与本地配图，不可恢复</text>
+        </view>
+        <text class="arrow">›</text>
+      </view>
+    </view>
+
+    <view v-if="showDeletePanel" class="delete-panel">
+      <text class="delete-tip">请输入登录密码，并在下方输入「注销账号」以确认。</text>
+      <input
+        class="delete-input"
+        type="password"
+        password
+        v-model="deletePassword"
+        placeholder="登录密码"
+      />
+      <input
+        class="delete-input"
+        v-model="deleteConfirm"
+        placeholder="请输入：注销账号"
+      />
+      <view class="delete-actions">
+        <view class="delete-cancel" @click="toggleDeletePanel">取消</view>
+        <view class="delete-submit" @click="submitDeleteAccount">确认注销</view>
+      </view>
     </view>
 
     <view v-if="!userStore.isLogin" class="login-btn" @click="goLogin">登录 / 注册</view>
@@ -72,19 +106,19 @@ import TabBar from '../../components/TabBar.vue';
 
 const userStore = useUserStore();
 const canViewLogs = ref(false);
+const showDeletePanel = ref(false);
+const deletePassword = ref('');
+const deleteConfirm = ref('');
+const deleting = ref(false);
 
 onMounted(async () => {
   if (!userStore.isLogin) return;
   await userStore.fetchUser();
-  // 白名单手机号可先显示入口；API meta 再校准
-  if (userStore.user?.phone === '17682160819') {
-    canViewLogs.value = true;
-  }
   try {
     const meta = await api.getLogsMeta();
     canViewLogs.value = !!meta?.canViewLogs;
   } catch {
-    // keep phone fallback
+    canViewLogs.value = false;
   }
 });
 
@@ -103,6 +137,44 @@ function goLogs() {
 
 function goLegal(url) {
   uni.navigateTo({ url });
+}
+
+function goContact() {
+  uni.navigateTo({ url: '/pages/mine/contact' });
+}
+
+function toggleDeletePanel() {
+  showDeletePanel.value = !showDeletePanel.value;
+  if (!showDeletePanel.value) {
+    deletePassword.value = '';
+    deleteConfirm.value = '';
+  }
+}
+
+async function submitDeleteAccount() {
+  if (deleting.value) return;
+  if (!deletePassword.value) {
+    uni.showToast({ title: '请输入密码', icon: 'none' });
+    return;
+  }
+  if (deleteConfirm.value.trim() !== '注销账号') {
+    uni.showToast({ title: '请输入「注销账号」确认', icon: 'none' });
+    return;
+  }
+  deleting.value = true;
+  try {
+    await api.deleteAccount(deletePassword.value, deleteConfirm.value.trim());
+    userStore.logout();
+    showDeletePanel.value = false;
+    uni.showToast({ title: '账号已注销', icon: 'none' });
+    setTimeout(() => {
+      uni.reLaunch({ url: '/pages/mine/index' });
+    }, 500);
+  } catch (err) {
+    uni.showToast({ title: err.message || '注销失败', icon: 'none' });
+  } finally {
+    deleting.value = false;
+  }
 }
 
 function logout() {
@@ -180,6 +252,51 @@ function logout() {
 }
 .menu-item.vip {
   background: linear-gradient(90deg, #fffbeb, #fff);
+}
+.menu-item.danger .menu-title {
+  color: #fa3534;
+}
+.delete-panel {
+  background: #fff;
+  border-radius: 16rpx;
+  padding: 28rpx 32rpx;
+  margin-bottom: 24rpx;
+  border: 1rpx solid #fde2e2;
+}
+.delete-tip {
+  font-size: 24rpx;
+  color: #909399;
+  display: block;
+  margin-bottom: 20rpx;
+  line-height: 1.5;
+}
+.delete-input {
+  background: #f5f7fa;
+  border-radius: 12rpx;
+  padding: 20rpx 24rpx;
+  font-size: 28rpx;
+  margin-bottom: 16rpx;
+}
+.delete-actions {
+  display: flex;
+  gap: 16rpx;
+  margin-top: 8rpx;
+}
+.delete-cancel,
+.delete-submit {
+  flex: 1;
+  text-align: center;
+  padding: 20rpx;
+  border-radius: 12rpx;
+  font-size: 28rpx;
+}
+.delete-cancel {
+  background: #f0f2f5;
+  color: #606266;
+}
+.delete-submit {
+  background: #fa3534;
+  color: #fff;
 }
 .menu-title {
   font-size: 30rpx;

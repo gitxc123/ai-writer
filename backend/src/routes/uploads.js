@@ -3,6 +3,7 @@ import multer from 'multer';
 import path from 'path';
 import { authMiddleware } from '../middleware/auth.js';
 import { ensureUploadDir, UPLOAD_DIR } from '../lib/public-url.js';
+import { withUploadSignature } from '../lib/upload-sign.js';
 
 ensureUploadDir();
 
@@ -35,7 +36,7 @@ router.post('/product', authMiddleware, (req, res) => {
     }
     const slotRaw = String(req.body?.slot || '').trim();
     const slot = slotRaw || `ref-${Date.now()}`;
-    const url = `/uploads/${req.file.filename}`;
+    const url = withUploadSignature(`/uploads/${req.file.filename}`);
     res.json({ code: 200, data: { slot, url, filename: req.file.filename } });
   });
 });

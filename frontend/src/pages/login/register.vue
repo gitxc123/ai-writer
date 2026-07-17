@@ -2,7 +2,8 @@
   <view class="page">
     <view class="form">
       <input v-model="phone" class="input" type="number" maxlength="11" placeholder="手机号" />
-      <input v-model="password" class="input" password placeholder="密码" />
+      <input v-model="password" class="input" password placeholder="密码（至少6位）" />
+      <input v-model="inviteCode" class="input" placeholder="邀请码（选填）" />
 
       <view class="agree-row" @click="agreed = !agreed">
         <view class="checkbox" :class="{ on: agreed }">{{ agreed ? '✓' : '' }}</view>
@@ -14,8 +15,13 @@
         </text>
       </view>
 
-      <view class="btn primary" @click="handleLogin">登录</view>
-      <view class="btn" @click="goRegister">注册账号</view>
+      <view class="agree-row" @click="ageOk = !ageOk">
+        <view class="checkbox" :class="{ on: ageOk }">{{ ageOk ? '✓' : '' }}</view>
+        <text class="agree-text">我确认已年满 18 周岁</text>
+      </view>
+
+      <view class="btn primary" @click="handleRegister">注册</view>
+      <view class="btn" @click="goLogin">已有账号？去登录</view>
     </view>
   </view>
 </template>
@@ -26,7 +32,10 @@ import { useUserStore } from '../../stores/user.js';
 
 const phone = ref('');
 const password = ref('');
+const inviteCode = ref('');
 const agreed = ref(false);
+const ageOk = ref(false);
+const submitting = ref(false);
 const userStore = useUserStore();
 
 function goTerms() {
@@ -37,25 +46,46 @@ function goPrivacy() {
   uni.navigateTo({ url: '/pages/legal/privacy' });
 }
 
-function goRegister() {
-  uni.navigateTo({ url: '/pages/login/register' });
+function goLogin() {
+  const pages = getCurrentPages();
+  if (pages.length > 1) {
+    uni.navigateBack();
+    return;
+  }
+  uni.redirectTo({ url: '/pages/login/login' });
 }
 
-async function handleLogin() {
+async function handleRegister() {
+  if (submitting.value) return;
   if (!agreed.value) {
     uni.showToast({ title: '请先同意用户协议和隐私政策', icon: 'none' });
     return;
   }
-  if (!phone.value || !password.value) {
-    uni.showToast({ title: '请输入手机号和密码', icon: 'none' });
+  if (!ageOk.value) {
+    uni.showToast({ title: '请确认已年满18周岁', icon: 'none' });
     return;
   }
+  if (!/^1\d{10}$/.test(phone.value)) {
+    uni.showToast({ title: '请输入正确手机号', icon: 'none' });
+    return;
+  }
+  if (password.value.length < 6) {
+    uni.showToast({ title: '密码至少6位', icon: 'none' });
+    return;
+  }
+
+  submitting.value = true;
   try {
-    await userStore.login(phone.value, password.value, { acceptedTerms: true });
-    uni.showToast({ title: '登录成功' });
-    setTimeout(() => uni.navigateBack(), 500);
+    await userStore.register(phone.value, password.value, inviteCode.value.trim() || undefined, {
+      acceptedTerms: true,
+      ageConfirmed: true
+    });
+    uni.showToast({ title: '注册成功，请登录', icon: 'none' });
+    setTimeout(() => goLogin(), 600);
   } catch (e) {
     uni.showToast({ title: e.message, icon: 'none' });
+  } finally {
+    submitting.value = false;
   }
 }
 </script>
@@ -80,7 +110,7 @@ async function handleLogin() {
   display: flex;
   align-items: flex-start;
   gap: 12rpx;
-  margin-bottom: 8rpx;
+  margin-bottom: 16rpx;
 }
 .checkbox {
   width: 36rpx;

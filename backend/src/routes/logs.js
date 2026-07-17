@@ -1,7 +1,7 @@
 import { Router } from 'express';
 import { prisma } from '../lib/prisma.js';
 import { authMiddleware } from '../middleware/auth.js';
-import { canViewLogs, clampLogLimit, backfillTaskLogsFromRecords } from '../lib/logger.js';
+import { canViewLogs, clampLogLimit, backfillTaskLogsFromRecords, maskPhone } from '../lib/logger.js';
 
 const router = Router();
 
@@ -87,7 +87,7 @@ router.get('/', authMiddleware, requireLogViewer, async (req, res) => {
             meta: r.meta,
             createdAt: r.createdAt,
             nickName: owner.nickName || '',
-            phone: owner.phone || ''
+            phone: maskPhone(owner.phone || '')
           };
         })
       }

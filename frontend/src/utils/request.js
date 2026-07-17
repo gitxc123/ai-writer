@@ -84,9 +84,34 @@ export function uploadProductPhoto(filePath, slot) {
 }
 
 export const api = {
-  login: (phone, password) => request({ url: '/auth/login', method: 'POST', data: { phone, password } }),
-  register: (phone, password, inviteCode) =>
-    request({ url: '/auth/register', method: 'POST', data: { phone, password, inviteCode } }),
+  login: (phone, password, opts = {}) =>
+    request({
+      url: '/auth/login',
+      method: 'POST',
+      data: {
+        phone,
+        password,
+        acceptedTerms: opts.acceptedTerms !== false
+      }
+    }),
+  register: (phone, password, inviteCode, opts = {}) =>
+    request({
+      url: '/auth/register',
+      method: 'POST',
+      data: {
+        phone,
+        password,
+        inviteCode,
+        acceptedTerms: !!opts.acceptedTerms,
+        ageConfirmed: !!opts.ageConfirmed
+      }
+    }),
+  deleteAccount: (password, confirm) =>
+    request({
+      url: '/auth/delete-account',
+      method: 'POST',
+      data: { password, confirm }
+    }),
   getMe: () => request({ url: '/user/me' }),
   getMemberPlans: () => request({ url: '/membership/plans' }),
   getMembershipConfig: () => request({ url: '/membership/config' }),

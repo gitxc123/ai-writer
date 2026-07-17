@@ -1,6 +1,8 @@
 import { Router } from 'express';
 import { prisma } from '../lib/prisma.js';
 import { authMiddleware } from '../middleware/auth.js';
+import { signRecordImageFields } from '../lib/upload-sign.js';
+import { checkDailyGenerateQuota } from '../lib/quota.js';
 
 async function hydrateImageMeta(records) {
   if (!records.length) return records;
@@ -25,9 +27,24 @@ const router = Router();
 
 router.post('/resume', authMiddleware, async (req, res) => {
   try {
+    const { isMemberActive } = await import('../lib/membership.js');
     const { resumeStuckTasks } = await import('../lib/task-runner.js');
-    await resumeStuckTasks();
-    res.json({ code: 200, data: { message: '已重新排队卡住的任务' } });
+    const { prisma: db } = await import('../lib/prisma.js');
+
+    const user = await db.user.findUnique({ where: { id: req.userId } });
+    if (!isMemberActive(user)) {
+      return res.status(403).json({
+        code: 403,
+        message: '请先开通会员后再创作',
+        needVip: true
+      });
+    }
+
+    const count = await resumeStuckTasks({ userId: req.userId });
+    res.json({
+      code: 200,
+      data: { message: '已重新排队卡住的任务', resumed: count }
+    });
   } catch (err) {
     res.status(500).json({ code: 500, message: err.message || '恢复失败' });
   }
@@ -45,6 +62,16 @@ router.post('/:id/retry', authMiddleware, async (req, res) => {
         code: 403,
         message: '请先开通会员后再创作',
         needVip: true
+      });
+    }
+
+    const overQuota = await checkDailyGenerateQuota(req.userId);
+    if (overQuota) {
+      return res.status(429).json({
+        code: 429,
+        message: overQuota.message,
+        used: overQuota.used,
+        limit: overQuota.limit
       });
     }
 
@@ -80,8 +107,18 @@ router.post('/:id/images/:index/regenerate', authMiddleware, async (req, res) =>
       });
     }
 
+    const overQuota = await checkDailyGenerateQuota(req.userId);
+    if (overQuota) {
+      return res.status(429).json({
+        code: 429,
+        message: overQuota.message,
+        used: overQuota.used,
+        limit: overQuota.limit
+      });
+    }
+
     const data = await regenerateOneImage(req.params.id, req.userId, req.params.index);
-    res.json({ code: 200, data });
+    res.json({ code: 200, data: signRecordImageFields(data) });
   } catch (err) {
     const status = err.status || 500;
     res.status(status).json({ code: status, message: err.message || '重新生成失败' });
@@ -152,14 +189,14 @@ router.post('/:id/localize-images', authMiddleware, async (req, res) => {
 
     res.json({
       code: 200,
-      data: {
+      data: signRecordImageFields({
         imageUrls: nextUrls,
         imageMeta: nextMeta,
         localized: changed,
         message: changed
           ? `已转存 ${changed} 张配图到本地，可下载后上传到头条`
           : '配图已是本地文件，可直接下载'
-      }
+      })
     });
   } catch (err) {
     res.status(500).json({ code: 500, message: err.message || '转存失败' });
@@ -199,7 +236,13 @@ router.get('/', authMiddleware, async (req, res) => {
     } catch {
       imageCount = imageUrls.length;
     }
-    return { ...record, imageUrls, imageMeta, imageCount, imageSource };
+    return signRecordImageFields({
+      ...record,
+      imageUrls,
+      imageMeta,
+      imageCount,
+      imageSource
+    });
   });
 
   res.json({ code: 200, data });
@@ -237,7 +280,7 @@ router.get('/:id', authMiddleware, async (req, res) => {
     imageMeta: JSON.stringify(imageMeta)
   });
 
-  const data = {
+  const data = signRecordImageFields({
     ...record,
     input: formInputs,
     imageCount: Number(input.imageCount) || imageUrls.length || 0,
@@ -247,7 +290,7 @@ router.get('/:id', authMiddleware, async (req, res) => {
     imageMeta,
     retry,
     regeneratingIndexes: getRegeneratingIndexes(record.id)
-  };
+  });
 
   if (record.template) {
     data.template = {

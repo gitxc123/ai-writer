@@ -10,17 +10,15 @@ export const useUserStore = defineStore('user', {
     isLogin: (state) => !!state.token
   },
   actions: {
-    async login(phone, password) {
-      const data = await api.login(phone, password);
+    async login(phone, password, opts = {}) {
+      const data = await api.login(phone, password, opts);
       this.token = data.token;
       this.user = data.user;
       uni.setStorageSync('token', data.token);
     },
-    async register(phone, password, inviteCode) {
-      const data = await api.register(phone, password, inviteCode);
-      this.token = data.token;
-      this.user = data.user;
-      uni.setStorageSync('token', data.token);
+    async register(phone, password, inviteCode, opts = {}) {
+      // 仅创建账号，不自动登录；注册成功后需用户回到登录页重新登录
+      await api.register(phone, password, inviteCode, opts);
     },
     async fetchUser() {
       if (!this.token) return;

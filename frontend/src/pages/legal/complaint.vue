@@ -2,9 +2,11 @@
   <view class="page">
     <text class="title">投诉与反馈</text>
     <text class="intro">
-      如您认为某条生成内容侵犯合法权益，请填写下方信息。任务 ID 可在「任务」列表或详情页复制，或向发布者索取。
+      如您认为某条生成内容侵犯合法权益，请填写下方信息。任务 ID 可在「任务」列表或详情页复制。我们将尽力在收到完整材料后
+      {{ slaDays }} 日内答复处理进展。本服务侧下架后，已发布至头条/小红书等平台的内容需另行向该平台投诉删除。
     </text>
-    <text class="email">联系邮箱：{{ complaintEmail }}</text>
+    <text class="email" v-if="complaintEmail">联系邮箱：{{ complaintEmail }}</text>
+    <text class="email" v-else>请优先通过下方表单提交；运营邮箱未配置时以表单记录为准。</text>
 
     <view class="form">
       <text class="label">任务 ID（必填）</text>
@@ -37,6 +39,7 @@ import { request } from '../../utils/request.js';
 import { getComplaintEmail } from '../../utils/legalTexts.js';
 
 const complaintEmail = ref(getComplaintEmail());
+const slaDays = ref(15);
 const recordId = ref('');
 const contact = ref('');
 const reason = ref('');
@@ -47,6 +50,7 @@ onMounted(async () => {
   try {
     const meta = await request({ url: '/complaints/meta', method: 'GET' });
     if (meta?.email) complaintEmail.value = meta.email;
+    if (meta?.responseSlaDays) slaDays.value = meta.responseSlaDays;
   } catch {
     // keep placeholder
   }

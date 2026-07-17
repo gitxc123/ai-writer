@@ -12,9 +12,12 @@ import {
   searchWebImages,
   formatWebImageError,
   buildImageAttribution,
+  withComplianceFooters,
+  stripComplianceFooters,
   detectTopicKind,
   WEB_IMAGE_FOOTER_MARKER,
-  AI_IMAGE_CREDIT
+  AI_IMAGE_CREDIT,
+  PRODUCT_IMAGE_CREDIT
 } from './article-images.js';
 import { isNewsArticle } from './news-guard.js';
 import { isProductIntroTemplate, buildProductImageJobsFromUploads, PRODUCT_IMAGE_CONCURRENCY } from './product-images.js';
@@ -44,12 +47,7 @@ const runningTasks = new Set();
 const imageOnlyRetries = new Set();
 
 function stripWebAttribution(output) {
-  const text = String(output || '');
-  const marker = `\n\n---\n${WEB_IMAGE_FOOTER_MARKER}`;
-  const idx = text.indexOf(marker);
-  if (idx >= 0) return text.slice(0, idx).trimEnd();
-  const idx2 = text.indexOf(WEB_IMAGE_FOOTER_MARKER);
-  return idx2 >= 0 ? text.slice(0, idx2).trimEnd() : text;
+  return stripComplianceFooters(output);
 }
 
 function parseTaskImages(record) {
@@ -275,8 +273,13 @@ async function runGenerationTaskBody(taskId) {
     if (imageCount <= 0) {
       await prisma.generationRecord.update({
         where: { id: taskId },
-        data: { status: TASK_STATUS.COMPLETED, error: rewriteSoftNote }
+        data: {
+          status: TASK_STATUS.COMPLETED,
+          output: withComplianceFooters(output, null, []),
+          error: rewriteSoftNote
+        }
       });
+      await logTask(taskId, 'info', 'completed');
       return;
     }
   } else {
@@ -459,7 +462,8 @@ async function runGenerationTaskBody(taskId) {
               : job.type === 'closeup'
                 ? '产品特写'
                 : '应用场景'),
-          sourceType: 'product-img2img',
+          sourceType: 'product',
+          credit: PRODUCT_IMAGE_CREDIT,
           photoIndex: job.photoIndex ?? null
         });
         success += 1;
@@ -554,6 +558,7 @@ async function runGenerationTaskBody(taskId) {
         where: { id: taskId },
         data: {
           status: TASK_STATUS.COMPLETED,
+          output: withComplianceFooters(output, null, []),
           error: soft.slice(0, 200)
         }
       });
@@ -565,10 +570,13 @@ async function runGenerationTaskBody(taskId) {
       success < expected
         ? `配图完成 ${success}/${expected} 张${failCount ? `，${failCount} 张因服务繁忙未出` : ''}`
         : null;
+    const productMeta = imageMeta.filter((m) => m.url);
+    const finalOutput = withComplianceFooters(output, 'product', productMeta);
     await prisma.generationRecord.update({
       where: { id: taskId },
       data: {
         status: TASK_STATUS.COMPLETED,
+        output: finalOutput,
         error: partialNote
       }
     });
@@ -578,9 +586,10 @@ async function runGenerationTaskBody(taskId) {
   }
 
   if (imageCount <= 0) {
+    const finalOutput = withComplianceFooters(output, null, []);
     await prisma.generationRecord.update({
       where: { id: taskId },
-      data: { status: TASK_STATUS.COMPLETED }
+      data: { status: TASK_STATUS.COMPLETED, output: finalOutput }
     });
     await logTask(taskId, 'info', 'completed');
     return;
@@ -594,7 +603,11 @@ async function runGenerationTaskBody(taskId) {
   if (startAt >= imageCount) {
     await prisma.generationRecord.update({
       where: { id: taskId },
-      data: { status: TASK_STATUS.COMPLETED, error: rewriteSoftNote }
+      data: {
+        status: TASK_STATUS.COMPLETED,
+        output: withComplianceFooters(output, imageSource, imageMeta),
+        error: rewriteSoftNote
+      }
     });
     return;
   }
@@ -677,10 +690,7 @@ async function runGenerationTaskBody(taskId) {
     await saveImages(taskId, imageUrls, imageMeta);
   }
 
-  let finalOutput = output;
-  if (imageSource === 'web' || imageSource === 'ai') {
-    finalOutput = output + buildImageAttribution(imageSource, imageMeta);
-  }
+  let finalOutput = withComplianceFooters(output, imageSource, imageMeta);
 
   await prisma.generationRecord.update({
     where: { id: taskId },
@@ -1088,12 +1098,12 @@ async function runRegenerateOneImage(taskId, index) {
   const cleanUrls = imageUrls.filter(Boolean);
   await saveImages(taskId, cleanUrls, cleanMeta);
 
-  if (imageSource === 'web' || imageSource === 'ai') {
+  if (imageSource === 'web' || imageSource === 'ai' || imageSource === 'product') {
     const body = stripWebAttribution(String(task.output || ''));
     await prisma.generationRecord.update({
       where: { id: taskId },
       data: {
-        output: body + buildImageAttribution(imageSource, cleanMeta),
+        output: withComplianceFooters(body, imageSource, cleanMeta),
         error: null,
         status: TASK_STATUS.COMPLETED
       }
@@ -1108,22 +1118,31 @@ async function runRegenerateOneImage(taskId, index) {
   console.log('[task:regen-image] done', taskId, index + 1, storedUrl);
 }
 
-/** 服务启动后恢复因重启而卡住的任务 */
-export async function resumeStuckTasks() {
+/**
+ * 恢复卡住的任务。
+ * @param {{ userId?: string }} [opts] 传入 userId 时仅恢复该用户（API）；启动时可省略以恢复全局。
+ * @returns {Promise<number>} 重新入队数量
+ */
+export async function resumeStuckTasks(opts = {}) {
+  const where = {
+    status: { in: [TASK_STATUS.PENDING, TASK_STATUS.PROCESSING] }
+  };
+  if (opts.userId) where.userId = opts.userId;
+
   const stuck = await prisma.generationRecord.findMany({
-    where: {
-      status: { in: [TASK_STATUS.PENDING, TASK_STATUS.PROCESSING] }
-    },
+    where,
     orderBy: { createdAt: 'asc' },
     take: 20
   });
 
   if (!stuck.length) {
     console.log('[task:resume] no stuck tasks');
-    return;
+    return 0;
   }
 
-  console.log(`[task:resume] found ${stuck.length} stuck task(s), re-queueing...`);
+  console.log(
+    `[task:resume] found ${stuck.length} stuck task(s)${opts.userId ? ` user=${opts.userId}` : ''}, re-queueing...`
+  );
   for (const task of stuck) {
     if (task.taskType === 'image') {
       enqueueImageTask(task.id);
@@ -1131,4 +1150,5 @@ export async function resumeStuckTasks() {
       enqueueGenerationTask(task.id);
     }
   }
+  return stuck.length;
 }

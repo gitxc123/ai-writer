@@ -18,6 +18,8 @@ model User {
   agentRate      Float    @default(0)
   inviteCode     String?  @unique
   invitedBy      String?
+  termsAcceptedAt DateTime?
+  ageConfirmedAt  DateTime?
   createdAt      DateTime @default(now())
   records        GenerationRecord[]
   orders         MembershipOrder[]

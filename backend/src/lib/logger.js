@@ -1,18 +1,26 @@
 import { prisma } from './prisma.js';
 
-export const DEFAULT_LOG_VIEWER_PHONE = '17682160819';
+/** 仅允许环境变量配置；不再内置默认手机号，避免源码泄露运营身份 */
+export const DEFAULT_LOG_VIEWER_PHONE = '';
 export const DEFAULT_LOG_LIMIT = 100;
 export const MAX_LOG_LIMIT = 200;
 export const DEFAULT_TASK_LOG_RETENTION_DAYS = 7;
 export const MAX_TASK_LOG_ROWS = 5000;
 
 export function getLogViewerPhone() {
-  const fromEnv = String(process.env.LOG_VIEWER_PHONE || '').trim();
-  return fromEnv || DEFAULT_LOG_VIEWER_PHONE;
+  return String(process.env.LOG_VIEWER_PHONE || '').trim();
 }
 
 export function canViewLogs(phone) {
-  return Boolean(phone) && String(phone) === getLogViewerPhone();
+  const viewer = getLogViewerPhone();
+  return Boolean(viewer) && Boolean(phone) && String(phone) === viewer;
+}
+
+/** 138****8000 */
+export function maskPhone(phone) {
+  const p = String(phone || '').trim();
+  if (!/^1\d{10}$/.test(p)) return p ? '***' : '';
+  return `${p.slice(0, 3)}****${p.slice(7)}`;
 }
 
 export function clampLogLimit(raw) {

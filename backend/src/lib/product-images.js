@@ -331,7 +331,7 @@ export function planProductImageJobs({ photos, keyword, style, sellingPoint }) {
           'Sharpen details, reduce noise/blur, balance exposure.',
           'If background is messy/colored, replace with pure white seamless studio backdrop.',
           'Keep the product identical including logos/text; do not crop away important parts.',
-          'Photorealistic, no overlay text, no watermark.',
+          'Photorealistic; keep a small corner caption text \"AI generated\" if the model supports readable text; otherwise prefer clean product photo without decorative watermarks of other brands.',
           nameHint,
           sellHint
         ]
@@ -382,7 +382,7 @@ export function planProductImageJobs({ photos, keyword, style, sellingPoint }) {
             `Task: realistic APPLICATION / IN-USE photo #${sceneIndex + 1}.`,
             useScene,
             'Use THIS reference photo for product identity and brand marks.',
-            'Photorealistic natural lighting; no overlay text; no watermark; no impossible product duplication.',
+            'Photorealistic natural lighting; prefer a discreet \"AI generated\" corner mark when text rendering is reliable; do not add third-party brand watermarks; no impossible product duplication.',
             nameHint
           ]
             .filter(Boolean)

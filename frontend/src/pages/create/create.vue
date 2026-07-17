@@ -1093,9 +1093,11 @@ function copyExportTitle() {
 }
 
 function copyTextOnly() {
+  // 含 AI 标识与配图免责，避免一键复制剥离合规声明
+  const full = String(output.value || '').trim();
   uni.setClipboardData({
-    data: articleBody.value || output.value,
-    success: () => uni.showToast({ title: '文案已复制' })
+    data: full || articleBody.value,
+    success: () => uni.showToast({ title: '文案已复制（含标识说明）', icon: 'none' })
   });
 }
 
