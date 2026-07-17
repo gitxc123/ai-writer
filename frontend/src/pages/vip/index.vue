@@ -34,6 +34,22 @@
       </view>
     </view>
 
+    <view class="activate-box">
+      <text class="activate-title">激活码开通</text>
+      <text class="activate-desc">输入激活码可开通或顺延会员 {{ activationDays }} 天</text>
+      <input
+        class="activate-input"
+        v-model="activationCode"
+        placeholder="请输入激活码"
+        maxlength="32"
+        confirm-type="done"
+        @confirm="activate"
+      />
+      <view class="activate-btn" :class="{ disabled: activating }" @click="activate">
+        {{ activating ? '激活中…' : '立即激活' }}
+      </view>
+    </view>
+
     <view v-if="userStore.user?.isAgent" class="agent-box">
       <text class="agent-title">代理中心</text>
       <text class="agent-code">邀请码：{{ userStore.user.inviteCode || '-' }}</text>
@@ -73,6 +89,9 @@ const userStore = useUserStore();
 const plans = ref([]);
 const selected = ref('monthly');
 const paying = ref(false);
+const activating = ref(false);
+const activationCode = ref('');
+const activationDays = ref(3);
 const commissions = ref([]);
 const commissionTotal = ref(0);
 const demoPayEnabled = ref(true);
@@ -90,6 +109,9 @@ onMounted(async () => {
     try {
       const cfg = await api.getMembershipConfig();
       demoPayEnabled.value = cfg?.demoPayEnabled !== false;
+      if (cfg?.activationCodeDays) {
+        activationDays.value = Number(cfg.activationCodeDays) || 3;
+      }
     } catch {
       demoPayEnabled.value = true;
     }
@@ -122,6 +144,32 @@ function formatDate(v) {
   const m = `${d.getMonth() + 1}`.padStart(2, '0');
   const day = `${d.getDate()}`.padStart(2, '0');
   return `${d.getFullYear()}-${m}-${day}`;
+}
+
+async function activate() {
+  if (activating.value) return;
+  if (!userStore.checkLogin()) return;
+  const code = String(activationCode.value || '').trim();
+  if (!code) {
+    uni.showToast({ title: '请输入激活码', icon: 'none' });
+    return;
+  }
+  activating.value = true;
+  try {
+    const result = await api.activateMembership(code);
+    if (result?.user) userStore.user = result.user;
+    await refreshMe();
+    activationCode.value = '';
+    const until = result?.memberExpireAt || result?.user?.memberExpireAt;
+    const tip = until
+      ? `激活成功，有效至 ${formatDate(until)}`
+      : result?.message || '激活成功';
+    uni.showToast({ title: tip, icon: 'none', duration: 2500 });
+  } catch (e) {
+    uni.showToast({ title: e.message || '激活失败', icon: 'none' });
+  } finally {
+    activating.value = false;
+  }
 }
 
 async function pay() {
@@ -330,5 +378,42 @@ async function pay() {
   color: #909399;
   margin-top: 16rpx;
   padding-bottom: 24rpx;
+}
+.activate-box {
+  background: #fff;
+  border-radius: 16rpx;
+  padding: 28rpx;
+  margin-bottom: 20rpx;
+}
+.activate-title {
+  font-size: 30rpx;
+  font-weight: 600;
+  display: block;
+}
+.activate-desc {
+  display: block;
+  margin-top: 8rpx;
+  font-size: 24rpx;
+  color: #909399;
+}
+.activate-input {
+  margin-top: 20rpx;
+  background: #f5f7fa;
+  border-radius: 12rpx;
+  padding: 20rpx 24rpx;
+  font-size: 28rpx;
+}
+.activate-btn {
+  margin-top: 20rpx;
+  background: #1a1a2e;
+  color: #fff;
+  text-align: center;
+  padding: 22rpx;
+  border-radius: 999rpx;
+  font-size: 28rpx;
+  font-weight: 600;
+}
+.activate-btn.disabled {
+  opacity: 0.6;
 }
 </style>

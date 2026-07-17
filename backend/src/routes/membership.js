@@ -7,7 +7,10 @@ import {
   calcExpireAt,
   isMemberActive,
   formatMemberLabel,
-  genInviteCode
+  genInviteCode,
+  isValidMasterActivationCode,
+  resolveActivationExpiry,
+  ACTIVATION_CODE_DAYS
 } from '../lib/membership.js';
 import { isDemoPayEnabled, getDailyGenerateLimit } from '../lib/security-config.js';
 
@@ -35,7 +38,8 @@ router.get('/config', (_req, res) => {
     code: 200,
     data: {
       demoPayEnabled: isDemoPayEnabled(),
-      dailyGenerateLimit: getDailyGenerateLimit()
+      dailyGenerateLimit: getDailyGenerateLimit(),
+      activationCodeDays: ACTIVATION_CODE_DAYS
     }
   });
 });
@@ -203,6 +207,48 @@ router.post('/pay', authMiddleware, async (req, res) => {
   } catch (err) {
     console.error('[membership:pay]', err);
     res.status(500).json({ code: 500, message: err.message || '支付失败' });
+  }
+});
+
+/** 激活码开通会员（万能码可反复使用，单次顺延 ACTIVATION_CODE_DAYS 天） */
+router.post('/activate', authMiddleware, async (req, res) => {
+  try {
+    const { code } = req.body || {};
+    if (!code || !String(code).trim()) {
+      return res.status(400).json({ code: 400, message: '请输入激活码' });
+    }
+    if (!isValidMasterActivationCode(code)) {
+      return res.status(400).json({ code: 400, message: '激活码无效' });
+    }
+
+    const user = await prisma.user.findUnique({ where: { id: req.userId } });
+    if (!user) return res.status(404).json({ code: 404, message: '用户不存在' });
+
+    const resolved = resolveActivationExpiry(user);
+    if (resolved.error) {
+      return res.status(resolved.status || 400).json({ code: resolved.status || 400, message: resolved.error });
+    }
+
+    const fresh = await prisma.user.update({
+      where: { id: req.userId },
+      data: {
+        memberPlan: 'code',
+        memberExpireAt: resolved.expireAt
+      }
+    });
+
+    res.json({
+      code: 200,
+      data: {
+        message: `激活成功，会员已顺延 ${ACTIVATION_CODE_DAYS} 天`,
+        days: ACTIVATION_CODE_DAYS,
+        memberExpireAt: fresh.memberExpireAt,
+        user: publicUser(fresh)
+      }
+    });
+  } catch (err) {
+    console.error('[membership:activate]', err);
+    res.status(500).json({ code: 500, message: err.message || '激活失败' });
   }
 });
 

@@ -65,7 +65,7 @@ export function formatMemberLabel(user) {
   if (!user) return '未开通';
   if (!isMemberActive(user)) return '已过期';
   if (user.memberPlan === 'lifetime') return user.isAgent ? '永久会员·代理' : '永久会员';
-  const map = { trial: '试用会员', monthly: '包月会员', yearly: '包年会员' };
+  const map = { trial: '试用会员', monthly: '包月会员', yearly: '包年会员', code: '激活码会员' };
   return map[user.memberPlan] || '会员';
 }
 
@@ -76,4 +76,37 @@ export function genInviteCode() {
     code += chars[Math.floor(Math.random() * chars.length)];
   }
   return code;
+}
+
+/** 写死万能激活码：不限次数；单次兑换有效期见 ACTIVATION_CODE_DAYS */
+export const MASTER_ACTIVATION_CODE = 'admin666666';
+export const ACTIVATION_CODE_DAYS = 3;
+
+export function normalizeActivationCode(raw) {
+  return String(raw || '')
+    .trim()
+    .replace(/\s+/g, '');
+}
+
+export function isValidMasterActivationCode(raw) {
+  return normalizeActivationCode(raw) === MASTER_ACTIVATION_CODE;
+}
+
+/**
+ * 计算激活后到期日：未过期则从当前到期日顺延，否则从现在起算。
+ * @returns {{ expireAt: Date, base: Date } | { error: string, status: number }}
+ */
+export function resolveActivationExpiry(user, days = ACTIVATION_CODE_DAYS, now = new Date()) {
+  if (user?.memberPlan === 'lifetime' || user?.isLifetime) {
+    return { error: '您已是永久会员，无需再激活', status: 400 };
+  }
+  let base = now;
+  if (
+    user?.memberExpireAt &&
+    new Date(user.memberExpireAt).getTime() > now.getTime() &&
+    user.memberPlan !== 'lifetime'
+  ) {
+    base = new Date(user.memberExpireAt);
+  }
+  return { expireAt: calcExpireAt(base, days), base };
 }
