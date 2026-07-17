@@ -27,9 +27,9 @@
       <view v-if="accountLabel(item)" class="account-row">
         <text class="account">{{ accountLabel(item) }}</text>
       </view>
-      <view v-if="item.taskId" class="task-row" @click="copyId(item.taskId)">
+      <view v-if="item.taskId" class="task-row">
         <text class="task-id">{{ item.taskId }}</text>
-        <text class="copy">复制 ID</text>
+        <text class="copy" @click.stop="copyId(item.taskId)">复制</text>
       </view>
       <text class="message">{{ item.message }}</text>
     </view>
@@ -187,6 +187,8 @@ onMounted(() => load());
   font-size: 22rpx;
   color: #0a84ff;
   margin-left: 16rpx;
+  padding: 4rpx 8rpx;
+  flex-shrink: 0;
 }
 .message {
   font-size: 28rpx;

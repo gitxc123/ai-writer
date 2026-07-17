@@ -5,6 +5,16 @@
       <text class="hero-desc">一键生成小红书、头条、公众号等平台文案</text>
     </view>
 
+    <view class="section-title">写作建议</view>
+    <view class="tip-card">
+      <text class="tip-title">{{ tip.title }}</text>
+      <text class="tip-body">{{ tip.body }}</text>
+      <view class="tip-actions">
+        <text class="tip-link" @click="nextTip">下一条</text>
+        <view class="tip-cta" @click="goTemplates">去创作</view>
+      </view>
+    </view>
+
     <view class="section-title">热门模板</view>
     <view class="tpl-grid">
       <view
@@ -35,11 +45,16 @@ import { ref, onMounted } from 'vue';
 import { api } from '../../utils/request.js';
 import { useUserStore } from '../../stores/user.js';
 import TabBar from '../../components/TabBar.vue';
+import { WRITING_TIPS, pickWritingTip } from '../../utils/writingTips.js';
 
 const hotTemplates = ref([]);
 const userStore = useUserStore();
+const tipIndex = ref(0);
+const tip = ref(pickWritingTip());
 
 onMounted(async () => {
+  tip.value = pickWritingTip(Date.now());
+  tipIndex.value = tip.value.index;
   try {
     const categories = await api.getCategories();
     hotTemplates.value = categories
@@ -50,6 +65,11 @@ onMounted(async () => {
     uni.showToast({ title: e.message, icon: 'none' });
   }
 });
+
+function nextTip() {
+  tipIndex.value = (tipIndex.value + 1) % WRITING_TIPS.length;
+  tip.value = { ...WRITING_TIPS[tipIndex.value], index: tipIndex.value };
+}
 
 function openCreate(id) {
   if (!userStore.checkLogin()) return;
@@ -93,6 +113,43 @@ function goTasks() {
   font-size: 32rpx;
   font-weight: 600;
   margin: 24rpx 0 16rpx;
+}
+.tip-card {
+  background: #fff;
+  border-radius: 16rpx;
+  padding: 28rpx;
+  border: 1rpx solid #e8f1ff;
+}
+.tip-title {
+  font-size: 30rpx;
+  font-weight: 600;
+  color: #1a1a1a;
+  display: block;
+}
+.tip-body {
+  margin-top: 12rpx;
+  font-size: 26rpx;
+  color: #606266;
+  line-height: 1.65;
+  display: block;
+}
+.tip-actions {
+  margin-top: 24rpx;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+}
+.tip-link {
+  font-size: 26rpx;
+  color: #909399;
+  padding: 8rpx 4rpx;
+}
+.tip-cta {
+  background: #0a84ff;
+  color: #fff;
+  font-size: 26rpx;
+  padding: 12rpx 28rpx;
+  border-radius: 999rpx;
 }
 .tpl-grid {
   display: grid;

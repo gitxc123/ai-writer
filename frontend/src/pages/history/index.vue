@@ -24,9 +24,9 @@
             {{ getStatusMeta(item.status).label }}
           </text>
         </view>
-        <view class="id-row" @click.stop="copyTaskId(item.id)">
+        <view class="id-row">
           <text class="task-id">ID {{ shortId(item.id) }}</text>
-          <text class="copy-id">复制</text>
+          <text class="copy-id" @click.stop="copyTaskId(item.id)">复制</text>
         </view>
         <text class="time">{{ formatTime(item.updatedAt || item.createdAt) }}</text>
         <view v-if="item.imageUrls?.length && (item.status === 'completed' || item.status === 'failed')" class="thumb-row">
@@ -53,14 +53,13 @@
       </view>
     </view>
 
-    <view v-if="hasRunning" class="polling-tip">自动刷新中...</view>
     <view class="bottom-space" />
     <TabBar current="/pages/history/index" />
   </view>
 </template>
 
 <script setup>
-import { ref, computed, onMounted, onUnmounted } from 'vue';
+import { ref, onMounted } from 'vue';
 import { onShow } from '@dcloudio/uni-app';
 import { api } from '../../utils/request.js';
 import { useUserStore } from '../../stores/user.js';
@@ -69,16 +68,12 @@ import {
   getStatusMeta,
   getTaskTitle,
   getTaskIcon,
-  getPreviewText,
-  isRunning
+  getPreviewText
 } from '../../utils/taskStatus.js';
 
 const records = ref([]);
 const loading = ref(false);
 const userStore = useUserStore();
-let pollTimer = null;
-
-const hasRunning = computed(() => records.value.some((item) => isRunning(item.status)));
 
 const IMAGE_TYPE_LABELS = {
   enhanced: '已修复',
@@ -128,22 +123,6 @@ async function resumeStuck() {
   }
 }
 
-function startPolling() {
-  stopPolling();
-  pollTimer = setInterval(() => {
-    if (hasRunning.value) {
-      loadTasks();
-    }
-  }, 2500);
-}
-
-function stopPolling() {
-  if (pollTimer) {
-    clearInterval(pollTimer);
-    pollTimer = null;
-  }
-}
-
 function formatTime(t) {
   return new Date(t).toLocaleString('zh-CN');
 }
@@ -171,14 +150,11 @@ function openDetail(item) {
 onMounted(() => {
   if (!userStore.checkLogin()) return;
   loadTasks();
-  startPolling();
 });
 
 onShow(() => {
   if (userStore.isLogin) loadTasks();
 });
-
-onUnmounted(stopPolling);
 </script>
 
 <style scoped>
@@ -284,6 +260,8 @@ onUnmounted(stopPolling);
 .copy-id {
   font-size: 22rpx;
   color: #0a84ff;
+  padding: 4rpx 8rpx;
+  flex-shrink: 0;
 }
 .thumb-row {
   display: flex;
@@ -344,12 +322,6 @@ image.thumb.thumb-single {
 }
 .preview.error {
   color: #fa3534;
-}
-.polling-tip {
-  text-align: center;
-  font-size: 22rpx;
-  color: #909399;
-  padding: 8rpx 0 16rpx;
 }
 .bottom-space {
   height: 40rpx;

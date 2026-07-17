@@ -264,7 +264,7 @@ export function formatAIError(err) {
   if (status === 402) return '服务额度不足，请稍后再试';
   if (status === 429) return '请求过于频繁，请稍后再试';
   if (status === 503 || /ServiceUnavailable|Service busy|busy/i.test(msg)) {
-    return '服务繁忙，请稍后再试';
+    return '高峰期服务繁忙，生成可能失败，请稍后再试';
   }
   if (/Connection|ENOTFOUND|fetch failed/i.test(msg)) {
     return '网络连接失败，请检查网络后重试';

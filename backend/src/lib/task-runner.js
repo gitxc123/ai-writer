@@ -917,6 +917,35 @@ export function enqueueImageTask(taskId) {
 /** 单张配图重新生成中：taskId -> Set<index> */
 const regeneratingSlots = new Map();
 
+/** 单张配图允许重新生成的最大次数（不计入日配额） */
+export const MAX_IMAGE_REGEN_PER_SLOT = 3;
+
+export function getImageRegenCount(metaItem) {
+  return Math.min(
+    MAX_IMAGE_REGEN_PER_SLOT,
+    Math.max(0, Math.floor(Number(metaItem?.regenCount) || 0))
+  );
+}
+
+export function getImageRegenRemaining(metaItem) {
+  return Math.max(0, MAX_IMAGE_REGEN_PER_SLOT - getImageRegenCount(metaItem));
+}
+
+export function buildImageRegenInfo(imageMeta = [], imageUrls = []) {
+  const len = Math.max(
+    Array.isArray(imageMeta) ? imageMeta.length : 0,
+    Array.isArray(imageUrls) ? imageUrls.length : 0
+  );
+  const used = [];
+  const remaining = [];
+  for (let i = 0; i < len; i += 1) {
+    const m = (Array.isArray(imageMeta) && imageMeta[i]) || {};
+    used.push(getImageRegenCount(m));
+    remaining.push(getImageRegenRemaining(m));
+  }
+  return { max: MAX_IMAGE_REGEN_PER_SLOT, used, remaining };
+}
+
 export function getRegeneratingIndexes(taskId) {
   const set = regeneratingSlots.get(taskId);
   return set ? [...set].sort((a, b) => a - b) : [];
@@ -987,6 +1016,36 @@ export async function regenerateOneImage(taskId, userId, imageIndex) {
     throw err;
   }
 
+  const imageUrls = [...existing.imageUrls];
+  const imageMeta = [...existing.imageMeta];
+  while (imageMeta.length <= index) {
+    imageMeta.push({
+      url: imageUrls[index] || '',
+      caption: `配图 ${index + 1}`
+    });
+  }
+
+  const used = getImageRegenCount(imageMeta[index]);
+  if (used >= MAX_IMAGE_REGEN_PER_SLOT) {
+    const err = new Error(
+      `第 ${index + 1} 张配图已达重新生成上限（${MAX_IMAGE_REGEN_PER_SLOT} 次）`
+    );
+    err.status = 400;
+    throw err;
+  }
+
+  const nextCount = used + 1;
+  imageMeta[index] = {
+    ...imageMeta[index],
+    url: imageMeta[index]?.url || imageUrls[index] || '',
+    regenCount: nextCount
+  };
+  await saveImages(
+    taskId,
+    imageUrls.filter(Boolean),
+    imageMeta.filter((m) => m?.url)
+  );
+
   markSlotRegenerating(taskId, index, true);
   setImmediate(() => {
     runRegenerateOneImage(taskId, index)
@@ -994,7 +1053,13 @@ export async function regenerateOneImage(taskId, userId, imageIndex) {
       .finally(() => markSlotRegenerating(taskId, index, false));
   });
 
-  return { index, message: `第 ${index + 1} 张配图开始重新生成` };
+  return {
+    index,
+    message: `第 ${index + 1} 张配图开始重新生成（本张还可再生成 ${MAX_IMAGE_REGEN_PER_SLOT - nextCount} 次）`,
+    regenCount: nextCount,
+    regenRemaining: MAX_IMAGE_REGEN_PER_SLOT - nextCount,
+    regenMax: MAX_IMAGE_REGEN_PER_SLOT
+  };
 }
 
 async function runRegenerateOneImage(taskId, index) {
@@ -1091,7 +1156,8 @@ async function runRegenerateOneImage(taskId, index) {
     sourceType: imageSource === 'web' ? 'web' : 'ai',
     credit,
     photographer,
-    sourceUrl
+    sourceUrl,
+    regenCount: getImageRegenCount(prev)
   };
 
   const cleanMeta = imageMeta.filter((m) => m?.url);

@@ -274,15 +274,16 @@
         </view>
       </view>
 
+      <text class="peak-hint">高峰期（如晚间）服务可能繁忙，文案或配图偶发失败属正常，失败后可在任务列表重试。</text>
       <view class="btn" :class="{ disabled: submitting }" @click="submitTask">
         {{ submitting ? '提交中...' : submitLabel }}
       </view>
     </view>
 
     <view v-if="output || isRunning(taskStatus)" class="result">
-      <view v-if="currentRecordId" class="task-id-bar" @click="copyCurrentTaskId">
+      <view v-if="currentRecordId" class="task-id-bar">
         <text>任务 ID：{{ shortTaskId(currentRecordId) }}</text>
-        <text class="copy-link">复制</text>
+        <text class="copy-link" @click.stop="copyCurrentTaskId">复制</text>
       </view>
       <view v-if="canCopyResult" class="platform-bar">
         <text class="platform-name">已适配：{{ platformInfo.name }}</text>
@@ -343,6 +344,9 @@
           文章配图
           <text v-if="imageCount > 0" class="image-count">（{{ imageUrls.length }}/{{ imageCount }}）</text>
         </text>
+        <text v-if="canRegenerateImage" class="result-text muted regen-hint">
+          每张配图最多重新生成 {{ imageRegenMax }} 次（不占用每日创作次数）；用尽后需新建任务。高峰期重生成也可能失败。
+        </text>
         <text v-if="isRunning(taskStatus) && imageUrls.length < imageCount" class="result-text muted">
           配图生成中，请稍候...
         </text>
@@ -365,10 +369,10 @@
             <view
               v-if="canRegenerateImage"
               class="img-regen-btn"
-              :class="{ disabled: isImageRegenerating(idx) }"
+              :class="{ disabled: isImageRegenerating(idx) || !imageRegenRemaining(idx) }"
               @click="regenerateImage(idx)"
             >
-              {{ isImageRegenerating(idx) ? '生成中...' : '重新生成' }}
+              {{ regenButtonLabel(idx) }}
             </view>
           </view>
         </view>
@@ -418,6 +422,8 @@ const copying = ref(false);
 const retrying = ref(false);
 const retryInfo = ref(null);
 const regeneratingIndexes = ref([]);
+const imageRegenMax = ref(3);
+const imageRegenRemainingList = ref([]);
 const pageReady = ref(false);
 const loadError = ref('');
 const productPhotos = ref([]);
@@ -822,6 +828,19 @@ async function loadTask(id) {
   regeneratingIndexes.value = Array.isArray(record.regeneratingIndexes)
     ? record.regeneratingIndexes
     : [];
+  if (record.imageRegen?.max) {
+    imageRegenMax.value = Number(record.imageRegen.max) || 3;
+  }
+  if (Array.isArray(record.imageRegen?.remaining)) {
+    imageRegenRemainingList.value = record.imageRegen.remaining.map((n) =>
+      Math.max(0, Number(n) || 0)
+    );
+  } else {
+    imageRegenRemainingList.value = (imageMeta.value || []).map((m) => {
+      const used = Math.max(0, Number(m?.regenCount) || 0);
+      return Math.max(0, imageRegenMax.value - used);
+    });
+  }
   return record;
 }
 
@@ -829,12 +848,45 @@ function isImageRegenerating(idx) {
   return regeneratingIndexes.value.includes(idx);
 }
 
+function imageRegenRemaining(idx) {
+  if (imageRegenRemainingList.value[idx] != null) {
+    return imageRegenRemainingList.value[idx];
+  }
+  const used = Math.max(0, Number(imageMeta.value?.[idx]?.regenCount) || 0);
+  return Math.max(0, imageRegenMax.value - used);
+}
+
+function regenButtonLabel(idx) {
+  if (isImageRegenerating(idx)) return '生成中...';
+  const left = imageRegenRemaining(idx);
+  if (left <= 0) return `已达上限（${imageRegenMax.value}次）`;
+  return `重新生成（剩${left}次）`;
+}
+
 async function regenerateImage(idx) {
   if (!canRegenerateImage.value || isImageRegenerating(idx) || !currentRecordId.value) return;
+  if (!imageRegenRemaining(idx)) {
+    uni.showModal({
+      title: '已达重新生成上限',
+      content: `第 ${idx + 1} 张配图最多可重新生成 ${imageRegenMax.value} 次，次数已用完。如需新图请新建任务。`,
+      showCancel: false,
+      confirmText: '知道了'
+    });
+    return;
+  }
   if (!userStore.checkLogin()) return;
   try {
     regeneratingIndexes.value = [...new Set([...regeneratingIndexes.value, idx])];
     const data = await api.regenerateRecordImage(currentRecordId.value, idx);
+    if (typeof data?.regenRemaining === 'number') {
+      const next = [...imageRegenRemainingList.value];
+      next[idx] = data.regenRemaining;
+      imageRegenRemainingList.value = next;
+    } else {
+      const next = [...imageRegenRemainingList.value];
+      next[idx] = Math.max(0, (next[idx] ?? imageRegenMax.value) - 1);
+      imageRegenRemainingList.value = next;
+    }
     uni.showToast({ title: data.message || `第 ${idx + 1} 张开始重新生成`, icon: 'none' });
     startPolling(currentRecordId.value, { untilRegenDone: true });
   } catch (e) {
@@ -1450,6 +1502,8 @@ function goTasks() {
 }
 .task-id-bar .copy-link {
   color: #0a84ff;
+  padding: 4rpx 8rpx;
+  flex-shrink: 0;
 }
 .result-title {
   font-size: 30rpx;
@@ -1554,6 +1608,13 @@ function goTasks() {
   display: block;
   line-height: 1.5;
 }
+.peak-hint {
+  display: block;
+  margin: 8rpx 0 20rpx;
+  font-size: 22rpx;
+  color: #b88230;
+  line-height: 1.5;
+}
 .image-card {
   margin-bottom: 8rpx;
 }
@@ -1588,6 +1649,10 @@ function goTasks() {
 .img-regen-btn.disabled {
   opacity: 0.55;
   pointer-events: none;
+}
+.regen-hint {
+  margin: -8rpx 0 12rpx;
+  display: block;
 }
 .img-tag {
   position: absolute;

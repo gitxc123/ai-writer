@@ -107,16 +107,7 @@ router.post('/:id/images/:index/regenerate', authMiddleware, async (req, res) =>
       });
     }
 
-    const overQuota = await checkDailyGenerateQuota(req.userId);
-    if (overQuota) {
-      return res.status(429).json({
-        code: 429,
-        message: overQuota.message,
-        used: overQuota.used,
-        limit: overQuota.limit
-      });
-    }
-
+    // 单张重生成走独立次数上限，不计入日创作配额
     const data = await regenerateOneImage(req.params.id, req.userId, req.params.index);
     res.json({ code: 200, data: signRecordImageFields(data) });
   } catch (err) {
@@ -273,7 +264,9 @@ router.get('/:id', authMiddleware, async (req, res) => {
     imageMeta = [];
   }
 
-  const { getRetryPlan, getRegeneratingIndexes } = await import('../lib/task-runner.js');
+  const { getRetryPlan, getRegeneratingIndexes, buildImageRegenInfo } = await import(
+    '../lib/task-runner.js'
+  );
   const retry = getRetryPlan({
     ...record,
     imageUrls: JSON.stringify(imageUrls),
@@ -289,7 +282,8 @@ router.get('/:id', authMiddleware, async (req, res) => {
     imageUrls,
     imageMeta,
     retry,
-    regeneratingIndexes: getRegeneratingIndexes(record.id)
+    regeneratingIndexes: getRegeneratingIndexes(record.id),
+    imageRegen: buildImageRegenInfo(imageMeta, imageUrls)
   });
 
   if (record.template) {

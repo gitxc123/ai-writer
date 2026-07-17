@@ -55,42 +55,6 @@ export function buildImagePayload({ prompt, size = '1024x768', model, images }) 
   };
 }
 
-export async function generateImage({
-  prompt,
-  size = '1024x768',
-  model,
-  images
-}) {
-  const payload = buildImagePayload({ prompt, size, model, images });
-
-  const res = await fetch(IMAGE_ENDPOINT, {
-    method: 'POST',
-    headers: {
-      Authorization: `Bearer ${getApiKey()}`,
-      'Content-Type': 'application/json'
-    },
-    body: JSON.stringify(payload),
-    signal: AbortSignal.timeout(360000)
-  });
-
-  const data = await res.json().catch(() => ({}));
-
-  if (!res.ok) {
-    const msg = data?.error?.message || data?.message || `HTTP ${res.status}`;
-    throw new Error(msg);
-  }
-
-  const url = data?.data?.[0]?.url;
-  if (!url) {
-    throw new Error('Agnes 未返回图片 URL');
-  }
-  return url;
-}
-
-function sleep(ms) {
-  return new Promise((resolve) => setTimeout(resolve, ms));
-}
-
 function isRetryableImageError(err) {
   const msg = String(err?.message || err || '').toLowerCase();
   return (
@@ -103,9 +67,81 @@ function isRetryableImageError(err) {
     msg.includes('503') ||
     msg.includes('502') ||
     msg.includes('429') ||
+    msg.includes('service busy') ||
+    msg.includes('service unavailable') ||
+    msg.includes('server busy') ||
+    msg.includes('overloaded') ||
     msg.includes('invalid argument returned 22') ||
     msg.includes('comfyui')
   );
+}
+
+/**
+ * 文生图；对 503/繁忙等可重试错误自动退避重试。
+ */
+export async function generateImage({
+  prompt,
+  size = '1024x768',
+  model,
+  images,
+  retries = 3
+}) {
+  const payload = buildImagePayload({ prompt, size, model, images });
+  let lastErr;
+
+  for (let attempt = 0; attempt <= retries; attempt += 1) {
+    try {
+      const res = await fetch(IMAGE_ENDPOINT, {
+        method: 'POST',
+        headers: {
+          Authorization: `Bearer ${getApiKey()}`,
+          'Content-Type': 'application/json'
+        },
+        body: JSON.stringify(payload),
+        signal: AbortSignal.timeout(360000)
+      });
+
+      const data = await res.json().catch(() => ({}));
+
+      if (!res.ok) {
+        const msg =
+          data?.error?.message ||
+          data?.detail ||
+          data?.message ||
+          `HTTP ${res.status}`;
+        const err = new Error(typeof msg === 'string' ? msg : JSON.stringify(msg));
+        err.status = res.status;
+        throw err;
+      }
+
+      const url = data?.data?.[0]?.url;
+      if (!url) {
+        throw new Error('Agnes 未返回图片 URL');
+      }
+      return url;
+    } catch (err) {
+      lastErr = err;
+      if (!isRetryableImageError(err) || attempt === retries) break;
+      const msg = String(err.message || '');
+      const queueBusy = /queue is full|retry later|rate limit|429|too many|service busy|503|unavailable/i.test(
+        msg
+      );
+      const waitMs = queueBusy
+        ? Math.min(45000, 6000 * 2 ** attempt)
+        : Math.min(20000, 3000 * 2 ** attempt);
+      console.warn(
+        `[agnes-image] text2img retry ${attempt + 1}/${retries} after ${waitMs}ms:`,
+        err.message
+      );
+      await sleep(waitMs);
+    }
+  }
+
+  throw lastErr || new Error('配图失败');
+}
+
+function sleep(ms) {
+  return new Promise((resolve) => setTimeout(resolve, ms));
 }
 
 export async function generateImageFromRefs({
@@ -129,7 +165,8 @@ export async function generateImageFromRefs({
         prompt,
         size,
         images: refs,
-        model: model || 'agnes-image-2.1-flash'
+        model: model || 'agnes-image-2.1-flash',
+        retries: 0
       });
     } catch (err) {
       lastErr = err;
@@ -180,7 +217,7 @@ export function formatImageError(err) {
     return '配图生成超时，请稍后重试';
   }
   if (/503|busy|unavailable/i.test(msg)) {
-    return '服务繁忙，请稍后再试';
+    return '高峰期服务繁忙，配图可能失败，请稍后再试';
   }
   return toUserErrorMessage(err, '配图生成失败，请稍后重试');
 }
