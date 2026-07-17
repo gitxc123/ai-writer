@@ -39,7 +39,8 @@
 | `COMPLAINT_EMAIL` | `legal@你的域名.com` | 投诉页展示邮箱（勿用占位） |
 | `ADMIN_TOKEN` | ≥16 随机串 | 投诉下架管理接口鉴权 |
 | `ENABLE_DEMO_PAY` | 不设 / `0` | 生产默认关闭演示支付；内测可设 `1` |
-| `DAILY_GENERATE_LIMIT` | `30` | 每用户每日生成次数上限 |
+| `DAILY_GENERATE_LIMIT` | `10` | 每用户每日新建任务上限 |
+| `GENERATE_SUBMIT_COOLDOWN_MS` | `5000` | 同一用户两次提交最短间隔（毫秒） |
 | `STRICT_SECURITY` | `1`（可选） | 为 1 时缺投诉邮箱/ADMIN_TOKEN 则拒绝启动 |
 
 以下一般 **不用改**（Dockerfile 已设）：

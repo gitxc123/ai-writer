@@ -275,6 +275,7 @@
       </view>
 
       <text class="peak-hint">高峰期（如晚间）服务可能繁忙，文案或配图偶发失败属正常，失败后可在任务列表重试。</text>
+      <text class="quota-hint">每日限 {{ dailyGenerateLimit }} 次创作；提交间隔至少 5 秒。不要堆数量，爆款靠精而不靠多。</text>
       <view class="btn" :class="{ disabled: submitting }" @click="submitTask">
         {{ submitting ? '提交中...' : submitLabel }}
       </view>
@@ -409,6 +410,9 @@ const imageMeta = ref([]);
 const imageCount = ref(1);
 const imageSource = ref('ai');
 const submitting = ref(false);
+const dailyGenerateLimit = ref(10);
+const lastSubmitAt = ref(0);
+const SUBMIT_COOLDOWN_MS = 5000;
 const templateId = ref('');
 const recordId = ref('');
 const currentRecordId = ref('');
@@ -954,6 +958,15 @@ onMounted(async () => {
       return;
     }
 
+    try {
+      const cfg = await api.getMembershipConfig();
+      if (cfg?.dailyGenerateLimit) {
+        dailyGenerateLimit.value = Number(cfg.dailyGenerateLimit) || 10;
+      }
+    } catch {
+      // ignore
+    }
+
     if (!templateId.value) {
       loadError.value = '缺少模板参数，请从模板列表重新进入';
       pageReady.value = true;
@@ -1003,6 +1016,13 @@ onUnmounted(stopPolling);
 async function submitTask() {
   if (submitting.value) return;
   if (!userStore.checkLogin()) return;
+
+  const sinceLast = Date.now() - (lastSubmitAt.value || 0);
+  if (lastSubmitAt.value && sinceLast < SUBMIT_COOLDOWN_MS) {
+    const wait = Math.ceil((SUBMIT_COOLDOWN_MS - sinceLast) / 1000);
+    uni.showToast({ title: `提交过快，请 ${wait} 秒后再试`, icon: 'none' });
+    return;
+  }
 
   let options = {
     imageCount: imageCount.value,
@@ -1072,9 +1092,24 @@ async function submitTask() {
   submitting.value = true;
   try {
     const data = await api.generate(templateId.value, { ...inputs }, options);
+    lastSubmitAt.value = Date.now();
     currentRecordId.value = data.taskId;
     taskStatus.value = data.status;
     const hasImages = isProductIntro.value || imageCount.value > 0;
+    const tip = data.qualityTip || data.tip || '';
+    const goHistory = () => uni.reLaunch({ url: '/pages/history/index' });
+
+    if (tip) {
+      uni.showModal({
+        title: '任务已提交',
+        content: tip,
+        showCancel: false,
+        confirmText: '知道了',
+        success: goHistory
+      });
+      return;
+    }
+
     uni.showToast({
       title: hasImages
         ? '图文任务已提交'
@@ -1084,7 +1119,7 @@ async function submitTask() {
             ? '改写任务已提交'
             : '文案任务已提交'
     });
-    setTimeout(() => uni.reLaunch({ url: '/pages/history/index' }), 600);
+    setTimeout(goHistory, 600);
   } catch (e) {
     if (e.needVip) {
       uni.showModal({
@@ -1096,7 +1131,7 @@ async function submitTask() {
         }
       });
     } else {
-      uni.showToast({ title: e.message || '提交失败，请稍后重试', icon: 'none' });
+      uni.showToast({ title: e.message || '提交失败，请稍后重试', icon: 'none', duration: 2800 });
     }
   } finally {
     submitting.value = false;
@@ -1610,9 +1645,16 @@ function goTasks() {
 }
 .peak-hint {
   display: block;
-  margin: 8rpx 0 20rpx;
+  margin: 8rpx 0 12rpx;
   font-size: 22rpx;
   color: #b88230;
+  line-height: 1.5;
+}
+.quota-hint {
+  display: block;
+  margin: 0 0 20rpx;
+  font-size: 22rpx;
+  color: #606266;
   line-height: 1.5;
 }
 .image-card {

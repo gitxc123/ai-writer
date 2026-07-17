@@ -15,8 +15,13 @@ import {
   MIN_STORY_CHARS,
   MAX_STORY_CHARS
 } from '../lib/storyboard.js';
-import { checkDailyGenerateQuota } from '../lib/quota.js';
+import { getDailyGenerateUsage } from '../lib/quota.js';
 import { checkInputsSafety } from '../lib/content-guard.js';
+import {
+  checkSubmitCooldown,
+  markSubmitCooldown,
+  QUALITY_OVER_QUANTITY_TIP
+} from '../lib/submit-cooldown.js';
 
 const router = Router();
 
@@ -25,6 +30,16 @@ router.post('/', authMiddleware, async (req, res) => {
     const { templateId, inputs, imageCount = 0, imageSize = 'landscape', imageSource = 'ai' } = req.body || {};
     if (!templateId) {
       return res.status(400).json({ code: 400, message: '缺少模板ID' });
+    }
+
+    const cooldown = checkSubmitCooldown(req.userId);
+    if (cooldown) {
+      res.setHeader('Retry-After', String(cooldown.retryAfterSec));
+      return res.status(429).json({
+        code: 429,
+        message: cooldown.message,
+        retryAfterSec: cooldown.retryAfterSec
+      });
     }
 
     const user = await prisma.user.findUnique({ where: { id: req.userId } });
@@ -36,13 +51,13 @@ router.post('/', authMiddleware, async (req, res) => {
       });
     }
 
-    const overQuota = await checkDailyGenerateQuota(req.userId);
-    if (overQuota) {
+    const usage = await getDailyGenerateUsage(req.userId);
+    if (usage.used >= usage.limit) {
       return res.status(429).json({
         code: 429,
-        message: overQuota.message,
-        used: overQuota.used,
-        limit: overQuota.limit
+        message: `今日创作次数已达上限（${usage.limit} 次）。${QUALITY_OVER_QUANTITY_TIP}。请明天再试`,
+        used: usage.used,
+        limit: usage.limit
       });
     }
 
@@ -141,7 +156,11 @@ router.post('/', authMiddleware, async (req, res) => {
       }
     });
 
+    markSubmitCooldown(req.userId);
     enqueueGenerationTask(task.id);
+
+    const usedAfter = usage.used + 1;
+    const isRepeatSubmit = usage.used >= 1;
 
     res.json({
       code: 200,
@@ -150,7 +169,13 @@ router.post('/', authMiddleware, async (req, res) => {
         id: task.id,
         status: task.status,
         taskType: task.taskType,
-        prompt: promptPreview
+        prompt: promptPreview,
+        used: usedAfter,
+        limit: usage.limit,
+        remaining: Math.max(0, usage.limit - usedAfter),
+        ...(isRepeatSubmit
+          ? { tip: QUALITY_OVER_QUANTITY_TIP, qualityTip: QUALITY_OVER_QUANTITY_TIP }
+          : {})
       }
     });
   } catch (err) {
