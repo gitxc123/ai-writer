@@ -90,3 +90,27 @@ model GenerationRecord {
   createdAt  DateTime @default(now())
   updatedAt  DateTime @updatedAt
 }
+
+model Complaint {
+  id          String    @id @default(cuid())
+  recordId    String
+  contact     String
+  reason      String
+  evidenceUrl String?
+  status      String    @default("pending")
+  note        String?
+  createdAt   DateTime  @default(now())
+  resolvedAt  DateTime?
+}
+
+model TaskLog {
+  id        String   @id @default(cuid())
+  taskId    String?
+  level     String
+  message   String
+  meta      String?
+  createdAt DateTime @default(now())
+
+  @@index([createdAt])
+  @@index([taskId, createdAt])
+}

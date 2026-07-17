@@ -88,15 +88,27 @@ function exportImageUrl(item) {
 
 function imageBlockHtml(item, idx) {
   const src = exportImageUrl(item);
-  const caption = item.caption
-    ? `<p style="color:#888;font-size:13px;margin:6px 0 14px;">图${idx + 1}：${escapeHtml(item.caption)}</p>`
+  const notes = [];
+  if (item.caption) notes.push(`图${idx + 1}：${escapeHtml(item.caption)}`);
+  const isAi = item.sourceType === 'ai' || /AI\s*生成/.test(String(item.credit || ''));
+  if (isAi) {
+    notes.push(escapeHtml(item.credit || 'AI 生成配图，非现场真实照片'));
+  } else if (item.credit) {
+    notes.push(escapeHtml(item.credit));
+  }
+  const caption = notes.length
+    ? `<p style="color:#888;font-size:13px;margin:6px 0 14px;">${notes.join(' · ')}</p>`
     : '';
   return `<p style="margin:16px 0;text-align:center;"><img src="${src}" alt="${escapeHtml(item.caption || `配图${idx + 1}`)}" style="max-width:100%;height:auto;border-radius:6px;" /></p>${caption}`;
 }
 
 function imageBlockText(item, idx) {
-  const cap = item.caption ? `（${item.caption}）` : '';
-  return `\n[图片${idx + 1}${cap}]\n${exportImageUrl(item)}\n`;
+  const parts = [`[图片${idx + 1}`];
+  if (item.caption) parts.push(`（${item.caption}）`);
+  const isAi = item.sourceType === 'ai' || /AI\s*生成/.test(String(item.credit || ''));
+  if (isAi) parts.push(' · AI生成，非现场真实照片');
+  parts.push(']');
+  return `\n${parts.join('')}\n${exportImageUrl(item)}\n`;
 }
 
 /**

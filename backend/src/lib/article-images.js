@@ -8,7 +8,26 @@ const TOPIC_KINDS = {
   SPORTS: 'sports',
   POLITICS: 'politics',
   LIFESTYLE: 'lifestyle',
+  NEWS: 'news',
   GENERAL: 'general'
+};
+
+const DISASTER_EVENT_RE =
+  /山体垮塌|山体滑坡|泥石流|垮塌|滑坡|塌方|坍塌|地震|火灾|爆炸|洪涝|洪水|台风|海啸|暴雨|溃坝|矿难|空难|车祸|交通事故|踩踏|泄漏|沉船/;
+
+const DISASTER_SYNONYMS = {
+  山体垮塌: ['山体垮塌', '垮塌', '滑坡', '山体滑坡', '塌方', '坍塌'],
+  山体滑坡: ['山体滑坡', '滑坡', '垮塌', '山体垮塌', '塌方'],
+  垮塌: ['垮塌', '滑坡', '山体垮塌', '塌方', '坍塌'],
+  滑坡: ['滑坡', '垮塌', '山体滑坡', '山体垮塌', '塌方'],
+  地震: ['地震', '余震'],
+  火灾: ['火灾', '起火', '大火', '火情'],
+  爆炸: ['爆炸', '爆燃'],
+  洪水: ['洪水', '洪涝', '内涝', '暴雨'],
+  洪涝: ['洪涝', '洪水', '内涝'],
+  台风: ['台风', '风暴'],
+  车祸: ['车祸', '交通事故', '连环撞'],
+  交通事故: ['交通事故', '车祸']
 };
 
 function detectTopicKind(text = '') {
@@ -18,6 +37,9 @@ function detectTopicKind(text = '') {
   }
   if (/双开|通报|纪委|受贿|落马|立案|法院|判决|官员|反腐|查处|违纪|开除/.test(t)) {
     return TOPIC_KINDS.POLITICS;
+  }
+  if (DISASTER_EVENT_RE.test(t) || /突发|事故|救援|遇难|伤亡|灾情|抢险/.test(t)) {
+    return TOPIC_KINDS.NEWS;
   }
   if (/种草|探店|穿搭|护肤|美食|旅行|情感|恋爱|职场成长/.test(t)) {
     return TOPIC_KINDS.LIFESTYLE;
@@ -42,46 +64,110 @@ function stripHistoricalYearBias(query) {
     .trim();
 }
 
-const EVENT_TAIL_RE =
-  /(患癌|确诊|病逝|去世|逝世|结婚|离婚|分手|复合|代言|演唱会|发布会|道歉|出轨|怀孕|生子|落马|双开|被抓|被查|通报|起诉|胜诉|败诉|获奖|夺冠|退役|复出|官宣|出道|退圈|塌房|翻车|爆料|回应|发声|被曝|传出)+$/g;
+const PERSON_EVENT_TAIL_RE =
+  /(患癌|确诊|病逝|去世|逝世|结婚|离婚|分手|复合|代言|演唱会|发布会|道歉|出轨|怀孕|生子|落马|双开|被抓|被查|通报|起诉|胜诉|败诉|获奖|夺冠|退役|复出|官宣|出道|退圈|塌房|翻车|爆料|回应|发声|被曝|传出)+$/;
 
-/**
- * 从主题里抽出主体（人名/品牌等），避免搜图只剩「患癌」「医院」这类泛词。
- * 例：曲婉婷患癌 → 曲婉婷
- */
-export function extractCoreSubjects(keyword = '') {
-  const k = String(keyword || '')
+function cleanKeyword(keyword = '') {
+  return String(keyword || '')
     .replace(/[^\u4e00-\u9fa5a-zA-Z0-9\s]/g, ' ')
     .replace(/\s+/g, ' ')
     .trim();
-  if (!k) return [];
+}
 
-  const subjects = new Set([k]);
-  let core = k.replace(EVENT_TAIL_RE, '').replace(/^(关于|最新|突发|重磅|独家|突发消息)/, '').trim();
-  if (core.length >= 2) subjects.add(core);
+function eventSynonyms(event = '') {
+  if (!event) return [];
+  const mapped = DISASTER_SYNONYMS[event];
+  if (mapped) return mapped;
+  return [event];
+}
 
-  const cnName = k.match(/^[\u4e00-\u9fa5]{2,4}/);
-  if (cnName) subjects.add(cnName[0]);
+/**
+ * 解析搜图锚点：地点 / 灾害事件 / 人名。
+ * 例：重庆山体垮塌 → place=重庆 event=山体垮塌
+ * 例：曲婉婷患癌 → person=曲婉婷
+ */
+export function extractSearchAnchors(keyword = '') {
+  const full = cleanKeyword(keyword);
+  const anchors = {
+    full,
+    place: '',
+    event: '',
+    person: '',
+    tokens: []
+  };
+  if (!full) return anchors;
 
-  // 英文专名（Wanting Qu 等）
-  const en = k.match(/\b[A-Z][a-z]+(?:\s+[A-Z][a-z]+)+\b/);
-  if (en) subjects.add(en[0]);
+  const tokens = new Set([full]);
+  const eventMatch = full.match(DISASTER_EVENT_RE);
+  if (eventMatch) {
+    anchors.event = eventMatch[0];
+    for (const s of eventSynonyms(anchors.event)) tokens.add(s);
 
+    const before = full.slice(0, full.indexOf(anchors.event)).replace(/(市|县|区|州|盟)$/, '');
+    const place = before.match(/^[\u4e00-\u9fa5]{2,4}/)?.[0] || '';
+    if (place) {
+      anchors.place = place;
+      tokens.add(place);
+    }
+  }
+
+  if (!anchors.event && PERSON_EVENT_TAIL_RE.test(full)) {
+    const person = full.replace(PERSON_EVENT_TAIL_RE, '').replace(/^(关于|最新|突发|重磅|独家)/, '').trim();
+    if (person.length >= 2) {
+      anchors.person = person.match(/^[\u4e00-\u9fa5]{2,4}/)?.[0] || person;
+      tokens.add(anchors.person);
+    }
+  }
+
+  if (!anchors.person && !anchors.event) {
+    const cnName = full.match(/^[\u4e00-\u9fa5]{2,4}/);
+    if (cnName) tokens.add(cnName[0]);
+  }
+
+  const en = full.match(/\b[A-Z][a-z]+(?:\s+[A-Z][a-z]+)+\b/);
+  if (en) tokens.add(en[0]);
+
+  anchors.tokens = [...tokens].filter((t) => t && t.length >= 2).sort((a, b) => b.length - a.length);
+  return anchors;
+}
+
+/**
+ * 从主题里抽出主体（人名/地点/事件等）。
+ * 例：曲婉婷患癌 → 曲婉婷；重庆山体垮塌 → 重庆、山体垮塌
+ */
+export function extractCoreSubjects(keyword = '') {
+  const a = extractSearchAnchors(keyword);
+  const subjects = new Set(a.tokens);
+  if (a.place) subjects.add(a.place);
+  if (a.event) subjects.add(a.event);
+  if (a.person) subjects.add(a.person);
+  if (a.full) subjects.add(a.full);
   return [...subjects].sort((a, b) => b.length - a.length);
 }
 
-/** 保证搜词里至少带上主题主体，防止 AI 规划成「癌症医院」这类无关词 */
+/** 保证搜词带上地点+事件或人名，防止漂成「救援航拍」「医院」等泛词 */
 export function ensureQueryHasSubject(query, keyword = '') {
   const q = String(query || '').trim();
+  const a = extractSearchAnchors(keyword);
+  if (!a.full) return q;
+
+  let next = q;
+  if (a.place && a.event) {
+    const hasPlace = next.includes(a.place);
+    const hasEvent = eventSynonyms(a.event).some((s) => next.includes(s));
+    if (!hasPlace || !hasEvent) {
+      next = `${a.place} ${a.event} ${next || '新闻 现场'}`.trim();
+    }
+    return next;
+  }
+
   const subjects = extractCoreSubjects(keyword);
-  if (!subjects.length) return q || String(keyword || '').trim();
-
-  const hay = q.toLowerCase();
+  const hay = next.toLowerCase();
   const hit = subjects.some((s) => hay.includes(String(s).toLowerCase()));
-  if (hit) return q;
+  if (hit) return next || a.full;
 
-  const primary = subjects.find((s) => s !== keyword) || subjects[0];
-  return `${primary} ${q || '新闻 资料图'}`.trim();
+  const primary = a.person || subjects.find((s) => s !== keyword) || subjects[0];
+  return `${primary} ${next || '新闻 资料图'}`.trim();
 }
 
 function extractTopicTokens(text = '') {
@@ -118,30 +204,50 @@ function extractTopicTokens(text = '') {
   return [...new Set([...fromSubjects, ...fromSpaces])].slice(0, 16);
 }
 
+function photoAltText(photo = {}) {
+  return `${photo.alt || ''} ${photo.credit || ''} ${photo.sourceUrl || ''}`.toLowerCase();
+}
+
 /**
- * 有明确主体时：优先只保留标题/来源含主体的图；没有命中才退回原列表。
+ * 有明确主体时只保留相关图。
+ * 时事灾害：必须同时命中地点 + 事件（或同义），不命中则返回空，禁止回退到无关图。
  */
 export function pickRelevantWebImages(candidates = [], { keyword = '', limit = 1 } = {}) {
-  const subjects = extractCoreSubjects(keyword).filter((s) => s.length >= 2 && s !== keyword);
-  // 也把完整 keyword 算进去（短主题时）
-  const keys = [...new Set([...subjects, ...extractCoreSubjects(keyword)])].filter(
-    (s) => s && s.length >= 2
-  );
-  if (!keys.length) return candidates.slice(0, Math.max(1, limit));
+  const a = extractSearchAnchors(keyword);
+  const max = Math.max(1, limit);
+
+  if (a.place && a.event) {
+    const syns = eventSynonyms(a.event);
+    const matched = candidates.filter((p) => {
+      const alt = photoAltText(p);
+      const hasPlace = alt.includes(a.place.toLowerCase());
+      const hasEvent = syns.some((s) => alt.includes(String(s).toLowerCase()));
+      return hasPlace && hasEvent;
+    });
+    return matched.slice(0, max);
+  }
+
+  const keys = extractCoreSubjects(keyword).filter((s) => s && s.length >= 2);
+  if (!keys.length) return candidates.slice(0, max);
 
   const matched = candidates.filter((p) => {
-    const alt = `${p.alt || ''} ${p.credit || ''} ${p.sourceUrl || ''}`.toLowerCase();
+    const alt = photoAltText(p);
     return keys.some((s) => alt.includes(String(s).toLowerCase()));
   });
 
-  const pool = matched.length ? matched : candidates;
-  return pool.slice(0, Math.max(1, limit));
+  // 人名/专名：有命中用命中；无人名硬约束时才允许回退
+  if (matched.length) return matched.slice(0, max);
+  if (a.person) return [];
+  return candidates.slice(0, max);
 }
 
 function buildSearchQueries({ keyword, caption, kind, index }) {
+  const a = extractSearchAnchors(keyword);
   const subjects = extractCoreSubjects(keyword);
-  const primary = subjects.find((s) => s !== keyword) || keyword || '';
-  const base = stripHistoricalYearBias(`${primary || keyword || ''} ${caption || ''}`.trim());
+  const primary = a.person || a.place || subjects.find((s) => s !== keyword) || keyword || '';
+  const base = stripHistoricalYearBias(
+    `${a.place && a.event ? `${a.place} ${a.event}` : primary || keyword || ''} ${caption || ''}`.trim()
+  );
   const variants = [];
 
   if (kind === TOPIC_KINDS.SPORTS) {
@@ -153,7 +259,6 @@ function buildSearchQueries({ keyword, caption, kind, index }) {
     ][index % 4];
     variants.push(`${base} ${sportsSuffix}`, `${primary || keyword} football news photo`);
   } else if (kind === TOPIC_KINDS.POLITICS) {
-    // 政务/反腐：禁用美女肖像类词，偏新闻现场与象征构图
     variants.push(
       `${primary || keyword} 官方通报 新闻图片`,
       `${primary || keyword} 纪检监察 新闻现场`,
@@ -161,16 +266,28 @@ function buildSearchQueries({ keyword, caption, kind, index }) {
       'anti corruption investigation newsroom documentary photo',
       'courthouse law justice documentary photo'
     );
+  } else if (kind === TOPIC_KINDS.NEWS || (a.place && a.event)) {
+    // 时事灾害：地点+事件，禁止人像/舞台类词
+    const place = a.place || primary;
+    const event = a.event || keyword;
+    variants.push(
+      `${place} ${event} 现场`,
+      `${place} ${event} 新闻 照片`,
+      `${place} ${event} 救援`,
+      `${place} landslide collapse news photo`,
+      `${place} ${event} 航拍`
+    );
   } else if (kind === TOPIC_KINDS.LIFESTYLE) {
     variants.push(`${base} lifestyle photo`, `${primary || keyword} real life scene`);
-  } else {
-    // 人物/娱乐新闻：主体名必须在搜词最前，避免漂到「医院」「癌症」泛图
+  } else if (a.person) {
     variants.push(
-      `${primary || keyword} 资料图`,
-      `${primary || keyword} 新闻 照片`,
-      `${base} 人物 照片`,
-      `${primary || keyword} portrait photo`
+      `${a.person} 资料图`,
+      `${a.person} 新闻 照片`,
+      `${a.person} 公开活动`,
+      `${a.person} portrait photo`
     );
+  } else {
+    variants.push(`${keyword} 新闻 现场`, `${keyword} 资料图`, `${base} news photo`);
   }
 
   return [...new Set(variants.map((q) => ensureQueryHasSubject(q, keyword)).filter(Boolean))];
@@ -198,12 +315,12 @@ function fallbackPlans(output, keyword, count, kind) {
 }
 
 function normalizePlans(plans, keyword, count, kind) {
+  const a = extractSearchAnchors(keyword);
   const subjects = extractCoreSubjects(keyword);
-  const primary = subjects.find((s) => s !== keyword) || keyword || '';
+  const primary = a.person || a.place || subjects.find((s) => s !== keyword) || keyword || '';
 
   return plans.slice(0, count).map((item, i) => {
     let searchQuery = stripHistoricalYearBias(item.searchQuery || keyword || `news ${i + 1}`);
-    // 纠正：政治新闻不要带进运动/人像词
     if (kind === TOPIC_KINDS.POLITICS) {
       searchQuery = searchQuery
         .replace(/\b(portrait|fashion|model|beauty|girl|woman|cute|school)\b/gi, '')
@@ -216,9 +333,16 @@ function normalizePlans(plans, keyword, count, kind) {
     if (kind === TOPIC_KINDS.SPORTS && !/close|action|player|match|football/i.test(searchQuery)) {
       searchQuery = `${searchQuery} match action`;
     }
-    // 人物/娱乐等：搜词必须含主体名（如曲婉婷），禁止只搜「患癌」「医院」
+    if (kind === TOPIC_KINDS.NEWS || (a.place && a.event)) {
+      searchQuery = searchQuery
+        .replace(/\b(portrait|fashion|model|beauty|stage|concert|selfie)\b/gi, '')
+        .replace(/人物|写真|舞台|演唱会|网红/g, '')
+        .trim();
+    }
     searchQuery = ensureQueryHasSubject(searchQuery, keyword);
-    if (primary && kind === TOPIC_KINDS.GENERAL && !searchQuery.includes(primary)) {
+    if (a.place && a.event) {
+      searchQuery = ensureQueryHasSubject(searchQuery, keyword);
+    } else if (primary && kind === TOPIC_KINDS.GENERAL && !searchQuery.includes(primary)) {
       searchQuery = `${primary} ${searchQuery}`.trim();
     }
     return {
@@ -247,13 +371,21 @@ export async function planArticleImages({ output, keyword, style, count }) {
       ? `主题属于政务/反腐/通报类。searchQuery 必须围绕“官方通报、纪检、会议、调查、法院”等，严禁出现美女、校服、时尚人像、网红肖像。`
       : kind === TOPIC_KINDS.SPORTS
         ? `主题属于赛事。searchQuery 用比赛动作/球员/现场，避免空荡球场鸟瞰。`
-        : `searchQuery 必须与文章主题强相关，禁止无关人像。`;
+        : kind === TOPIC_KINDS.NEWS
+          ? `主题属于时事灾害/事故。searchQuery 必须同时含地点与事件（如“重庆 山体垮塌 现场”），严禁人像、夜景、舞台、风景名胜。`
+          : `searchQuery 必须与文章主题强相关，禁止无关人像。`;
 
-  const subjects = extractCoreSubjects(keyword);
-  const primary = subjects.find((s) => s !== keyword) || keyword || '';
-  const subjectRule = primary
-    ? `每条 searchQuery 必须以「${primary}」开头或明确包含该主体名；禁止只写患癌/医院/患者/癌症等泛词而不带人名。`
-    : 'searchQuery 必须包含文章主题中的核心专名。';
+  const anchors = extractSearchAnchors(keyword);
+  const primary =
+    anchors.place && anchors.event
+      ? `${anchors.place}${anchors.event}`
+      : anchors.person || extractCoreSubjects(keyword).find((s) => s !== keyword) || keyword || '';
+  const subjectRule =
+    anchors.place && anchors.event
+      ? `每条 searchQuery 必须同时包含地点「${anchors.place}」和事件「${anchors.event}」；禁止只写救援/航拍/现场等泛词。`
+      : primary
+        ? `每条 searchQuery 必须以「${primary}」开头或明确包含该主体；禁止只写患癌/医院/患者等泛词。`
+        : 'searchQuery 必须包含文章主题中的核心专名。';
 
   try {
     const response = await chatCompletions(
@@ -266,13 +398,13 @@ export async function planArticleImages({ output, keyword, style, count }) {
 1. 每张配图必须严格对应主题与段落要点，图文语义一致。
 2. ${kindHint}
 3. ${subjectRule}
-4. 禁止为了“好看”选无关人物肖像。
+4. 禁止为了“好看”选无关人物肖像或城市风景。
 只返回 JSON 数组。`
           },
           {
             role: 'user',
             content: `文章主题：${keyword || '无'}
-主体专名（搜图必须包含）：${primary || keyword || '无'}
+搜图必须包含：${primary || keyword || '无'}
 风格：${style || '资讯'}
 数量：${count}
 
@@ -283,11 +415,11 @@ ${output.slice(0, 2800)}
 [
   {
     "caption": "对应要点（中文，20字内）",
-    "searchQuery": "用于搜图的中文关键词，必须含主体专名",
+    "searchQuery": "用于搜图的中文关键词，必须含地点与事件或主体专名",
     "scenePrompt": "英文场景描述，强调与主题一致"
   }
 ]
-硬性：${count} 条的 searchQuery 必须彼此明显不同（场景/主体/角度不同），禁止用近义词反复搜同一类图；每条都必须含「${primary || keyword}」。`
+硬性：${count} 条的 searchQuery 必须彼此明显不同；每条都必须含「${primary || keyword}」。`
           }
         ],
         temperature: 0.2
@@ -373,17 +505,25 @@ async function searchDuckDuckGoImages(query, limit = 8) {
 }
 
 function scorePhoto(photo, { kind, topicTokens = [], caption = '', keyword = '' } = {}) {
-  const alt = `${photo.alt || ''} ${photo.credit || ''} ${photo.sourceUrl || ''}`.toLowerCase();
+  const alt = photoAltText(photo);
   const topicText = `${keyword} ${caption}`.toLowerCase();
   let score = 0;
+  const a = extractSearchAnchors(keyword);
 
-  const subjects = extractCoreSubjects(keyword);
-  for (const s of subjects) {
+  if (a.place && a.event) {
+    const hasPlace = alt.includes(a.place.toLowerCase());
+    const hasEvent = eventSynonyms(a.event).some((s) => alt.includes(String(s).toLowerCase()));
+    if (hasPlace && hasEvent) score += 20;
+    else if (hasPlace || hasEvent) score += 2;
+    else score -= 8;
+    if (/夜景|洪崖洞|旅游|风景|舞台|演唱会|写真|网红|美女/.test(alt)) score -= 10;
+  }
+
+  for (const s of extractCoreSubjects(keyword)) {
     const t = String(s).toLowerCase();
     if (t.length >= 2 && alt.includes(t)) score += 10;
   }
 
-  // 标题/说明与主题关键词重合
   for (const token of topicTokens) {
     const t = token.toLowerCase();
     if (t && alt.includes(t)) score += 4;
@@ -394,11 +534,16 @@ function scorePhoto(photo, { kind, topicTokens = [], caption = '', keyword = '' 
     if (/会议|通报|纪委|官方|新闻|court|law|government|press|investigation|公文|反腐/.test(alt)) {
       score += 6;
     }
-    // 强惩罚：无关美女/校服/时尚人像
     if (/girl|woman|beauty|fashion|model|portrait|cute|selfie|校服|美女|少女|网红|妆/.test(alt)) {
       score -= 12;
     }
-    if (photo.source === 'pexels') score -= 3; // 政务题偏好真实新闻检索
+    if (photo.source === 'pexels') score -= 3;
+  }
+
+  if (kind === TOPIC_KINDS.NEWS) {
+    if (/救援|现场|垮塌|滑坡|事故|灾情|抢险|collapse|landslide/.test(alt)) score += 6;
+    if (/portrait|fashion|model|beauty|concert|stage/.test(alt)) score -= 10;
+    if (photo.source === 'pexels') score -= 6;
   }
 
   if (kind === TOPIC_KINDS.SPORTS) {
@@ -407,7 +552,6 @@ function scorePhoto(photo, { kind, topicTokens = [], caption = '', keyword = '' 
     if (/fashion|beauty|model/.test(alt)) score -= 6;
   }
 
-  // 通用：惩罚纯网红风；中文人名主题惩罚纯英文图库无关图
   if (/instagram|tiktok|selfie|cosmetic|makeup/.test(alt)) score -= 4;
   if (/[\u4e00-\u9fa5]{2,}/.test(keyword) && photo.source === 'pexels') score -= 5;
 
@@ -457,38 +601,34 @@ export async function searchWebImages(query, limit = 1, context = {}) {
   const topicTokens = extractTopicTokens(`${keyword} ${caption} ${query}`);
   const excludeUrls = context.excludeUrls || [];
   const index = Number(context.index) || 0;
+  const anchors = extractSearchAnchors(keyword);
   const safeQuery = ensureQueryHasSubject(query, keyword);
+  const chineseNews = Boolean(anchors.place && anchors.event) || kind === TOPIC_KINDS.NEWS;
   const chineseSubject = /[\u4e00-\u9fa5]{2,}/.test(keyword);
 
-  const diversity = [
-    '',
-    '资料图',
-    '新闻照片',
-    '公开活动',
-    '舞台 现场'
-  ][index % 5];
+  const diversity = chineseNews
+    ? ['', '现场', '救援', '航拍', '新闻'][index % 5]
+    : ['', '资料图', '新闻照片', '公开活动', '现场'][index % 5];
 
   const queries = [
     stripHistoricalYearBias(`${safeQuery} ${diversity}`.trim()),
-    ...buildSearchQueries({ keyword, caption, kind, index }).slice(0, 3)
+    ...buildSearchQueries({ keyword, caption, kind, index }).slice(0, 4)
   ]
     .map((q) => ensureQueryHasSubject(q, keyword))
     .filter(Boolean);
 
   let candidates = [];
 
-  // 政务新闻优先用网络检索，少依赖 Pexels；中文人名新闻同样少用 Pexels（库里几乎没有明星本人）
   for (const q of queries) {
-    const fromDdg = await searchDuckDuckGoImages(q, 10);
+    const fromDdg = await searchDuckDuckGoImages(q, 12);
     candidates.push(...fromDdg);
-    if (kind !== TOPIC_KINDS.POLITICS && !chineseSubject) {
+    if (kind !== TOPIC_KINDS.POLITICS && !chineseSubject && !chineseNews) {
       const fromPexels = await searchPexels(q, 6);
       candidates.push(...fromPexels);
     }
-    if (candidates.length >= 16) break;
+    if (candidates.length >= 20) break;
   }
 
-  // 政治题如果结果太少，再轻度补充象征类图库词（仍过滤人像）
   if (kind === TOPIC_KINDS.POLITICS && candidates.length < 4) {
     candidates.push(...(await searchPexels('courthouse justice documents news', 5)));
     candidates.push(...(await searchPexels('government meeting press conference', 5)));
@@ -506,16 +646,13 @@ export async function searchWebImages(query, limit = 1, context = {}) {
     .map((p) => ({ ...p, _score: scorePhoto(p, { kind, topicTokens, caption, keyword }) }))
     .sort((a, b) => b._score - a._score);
 
-  // 过滤明显负分图（如美女照给双开新闻）
   const positive = candidates.filter((p) => p._score >= 0);
   let pool = filterExcludedImages(positive.length ? positive : candidates, excludeUrls);
 
-  // 排除后若空，放宽到全量再排一次（仍排除已用）
   if (!pool.length && excludeUrls.length) {
     pool = filterExcludedImages(candidates, excludeUrls);
   }
 
-  // 有明确人名时优先只留标题含人名的图
   pool = pickRelevantWebImages(pool, { keyword, limit: Math.max(8, limit) });
 
   console.log(
@@ -547,6 +684,8 @@ export function formatWebImageError(err) {
 
 export const WEB_IMAGE_FOOTER_MARKER = '【配图来源】';
 
+export const AI_IMAGE_CREDIT = 'AI 生成配图，非现场真实照片';
+
 export function buildWebImageAttribution(imageMeta) {
   if (!imageMeta?.length) return '';
 
@@ -565,9 +704,38 @@ ${sourceLines.join('\n')}
 
 【免责声明】
 1. 本文配图来自互联网公开检索（含公开网页及图库），仅供内容示意与排版参考，不代表任何官方立场。
-2. 配图可能与正文所述具体事件、时间或地点存在差异，发布前请自行核实图文匹配性。
-3. 图片版权归原作者或原平台所有；如涉及侵权，请联系发布者删除。
+2. 本服务不授予图片版权或使用权；图片版权归原作者、原平台或合法权利人所有。发布前须自行取得授权，或更换为已获授权素材。
+3. 配图可能与正文所述具体事件、时间或地点存在差异，发布前请自行核实图文匹配性。
+4. 如涉及侵权，请通过产品内「投诉与反馈」或联系发布者处理删除。
+5. 因使用本文内容及配图所产生的法律责任，由内容发布者自行承担。`;
+}
+
+export function buildAiImageAttribution(imageMeta) {
+  if (!imageMeta?.length) return '';
+
+  const sourceLines = imageMeta.map((item, i) => {
+    const caption = item.caption || '配图';
+    const credit = item.credit || AI_IMAGE_CREDIT;
+    return `图${i + 1}（${caption}）：${credit}`;
+  });
+
+  return `
+
+---
+【配图来源】
+${sourceLines.join('\n')}
+
+【免责声明】
+1. 本文配图由人工智能生成，仅供内容示意与排版参考，并非真实现场拍摄照片。
+2. 配图中的人物、场景与细节可能与正文所述事件不完全一致，请勿当作新闻纪实图片使用或传播。
+3. 发布前请自行核验目标平台对 AI 生成内容的标注要求，并按规范声明。
 4. 因使用本文内容及配图所产生的法律责任，由内容发布者自行承担。`;
+}
+
+export function buildImageAttribution(imageSource, imageMeta) {
+  if (imageSource === 'web') return buildWebImageAttribution(imageMeta);
+  if (imageSource === 'ai') return buildAiImageAttribution(imageMeta);
+  return '';
 }
 
 export function splitArticleOutput(text) {

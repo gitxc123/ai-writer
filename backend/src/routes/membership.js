@@ -9,6 +9,7 @@ import {
   formatMemberLabel,
   genInviteCode
 } from '../lib/membership.js';
+import { isDemoPayEnabled, getDailyGenerateLimit } from '../lib/security-config.js';
 
 const router = Router();
 
@@ -28,6 +29,16 @@ function publicUser(user) {
     createdAt: user.createdAt
   };
 }
+
+router.get('/config', (_req, res) => {
+  res.json({
+    code: 200,
+    data: {
+      demoPayEnabled: isDemoPayEnabled(),
+      dailyGenerateLimit: getDailyGenerateLimit()
+    }
+  });
+});
 
 router.get('/plans', (_req, res) => {
   res.json({ code: 200, data: MEMBER_PLANS });
@@ -70,6 +81,12 @@ router.get('/me', authMiddleware, async (req, res) => {
 /** 创建订单（模拟支付前） */
 router.post('/order', authMiddleware, async (req, res) => {
   try {
+    if (!isDemoPayEnabled()) {
+      return res.status(503).json({
+        code: 503,
+        message: '在线支付暂未开通，请联系运营开通会员'
+      });
+    }
     const { planId } = req.body || {};
     const plan = getPlan(planId);
     if (!plan) return res.status(400).json({ code: 400, message: '套餐不存在' });
@@ -103,6 +120,12 @@ router.post('/order', authMiddleware, async (req, res) => {
 /** 模拟支付成功并发放权益 / 代理分成 */
 router.post('/pay', authMiddleware, async (req, res) => {
   try {
+    if (!isDemoPayEnabled()) {
+      return res.status(503).json({
+        code: 503,
+        message: '演示支付已关闭。生产环境请接入真实支付或设置 ENABLE_DEMO_PAY=1（仅内测）'
+      });
+    }
     const { orderId } = req.body || {};
     if (!orderId) return res.status(400).json({ code: 400, message: '缺少订单号' });
 

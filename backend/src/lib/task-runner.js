@@ -11,9 +11,10 @@ import {
   planArticleImages,
   searchWebImages,
   formatWebImageError,
-  buildWebImageAttribution,
+  buildImageAttribution,
   detectTopicKind,
-  WEB_IMAGE_FOOTER_MARKER
+  WEB_IMAGE_FOOTER_MARKER,
+  AI_IMAGE_CREDIT
 } from './article-images.js';
 import { isNewsArticle } from './news-guard.js';
 import { isProductIntroTemplate, buildProductImageJobsFromUploads, PRODUCT_IMAGE_CONCURRENCY } from './product-images.js';
@@ -29,6 +30,7 @@ import {
   uploadLocalForAgnes,
   persistImageUrl
 } from './public-url.js';
+import { logTask } from './logger.js';
 
 export const TASK_STATUS = {
   PENDING: 'pending',
@@ -143,6 +145,7 @@ async function markProcessing(taskId) {
     where: { id: taskId },
     data: { status: TASK_STATUS.PROCESSING }
   });
+  await logTask(taskId, 'info', 'processing started');
 }
 
 async function markFailed(taskId, error) {
@@ -152,6 +155,7 @@ async function markFailed(taskId, error) {
       where: { id: taskId },
       data: { status: TASK_STATUS.FAILED, error: friendly.slice(0, 200) }
     });
+    await logTask(taskId, 'error', friendly.slice(0, 500));
   } catch (err) {
     console.error('[task:markFailed]', taskId, err.message);
   }
@@ -238,6 +242,7 @@ async function runGenerationTaskBody(taskId) {
     // 一键改文：先改写文案，再按用户选择走通用配图
     const source = String(inputs.article || inputs.keyword || '').trim();
     console.log('[task:generation] rewrite start', taskId, 'len=', source.length, 'images=', imageCount);
+    await logTask(taskId, 'info', 'rewrite start', { length: source.length, imageCount });
     const result = await withTimeout(
       rewriteArticlePipeline({
         source,
@@ -301,6 +306,7 @@ async function runGenerationTaskBody(taskId) {
     }
 
     console.log('[task:generation] start text', taskId, { imageCount, imageSource });
+    await logTask(taskId, 'info', 'text start', { imageCount, imageSource });
     const storyboard = isStoryboardTemplate(task.template.name);
     // 分镜输出长、模型慢：给足时间，并允许超时后自动再试 1 次
     const textTimeout = storyboard ? 480000 : 180000;
@@ -339,6 +345,7 @@ async function runGenerationTaskBody(taskId) {
       data: { output, error: null }
     });
     console.log('[task:generation] text done', taskId, 'len=', output.length);
+    await logTask(taskId, 'info', 'text done', { length: output.length });
   }
 
   if (
@@ -566,6 +573,7 @@ async function runGenerationTaskBody(taskId) {
       }
     });
     console.log('[task:generation] product completed', taskId, 'images=', success, '/', expected);
+    await logTask(taskId, 'info', 'product completed', { success, expected });
     return;
   }
 
@@ -574,6 +582,7 @@ async function runGenerationTaskBody(taskId) {
       where: { id: taskId },
       data: { status: TASK_STATUS.COMPLETED }
     });
+    await logTask(taskId, 'info', 'completed');
     return;
   }
 
@@ -604,6 +613,9 @@ async function runGenerationTaskBody(taskId) {
   for (let i = startAt; i < imageCount; i += 1) {
     const plan = plans[i] || plans[plans.length - 1];
     console.log('[task:generation] image', i + 1, '/', imageCount, imageSource, plan?.searchQuery);
+    await logTask(taskId, 'info', `image ${i + 1}/${imageCount} ${imageSource}`, {
+      searchQuery: plan?.searchQuery || undefined
+    });
 
     if (imageSource === 'web') {
       const topicKind = detectTopicKind(`${keyword} ${style} ${plan.caption || ''} ${output.slice(0, 200)}`);
@@ -658,7 +670,7 @@ async function runGenerationTaskBody(taskId) {
         caption: plan.caption,
         query: plan.searchQuery,
         sourceType: 'ai',
-        credit: 'AI 生成配图'
+        credit: AI_IMAGE_CREDIT
       });
     }
 
@@ -666,8 +678,8 @@ async function runGenerationTaskBody(taskId) {
   }
 
   let finalOutput = output;
-  if (imageSource === 'web') {
-    finalOutput = output + buildWebImageAttribution(imageMeta);
+  if (imageSource === 'web' || imageSource === 'ai') {
+    finalOutput = output + buildImageAttribution(imageSource, imageMeta);
   }
 
   await prisma.generationRecord.update({
@@ -679,6 +691,7 @@ async function runGenerationTaskBody(taskId) {
     }
   });
   console.log('[task:generation] completed', taskId);
+  await logTask(taskId, 'info', 'completed');
 }
 
 async function loadTaskImageUrls(taskId) {
@@ -731,6 +744,7 @@ export async function runGenerationTask(taskId) {
           }
         });
         console.log('[task:generation] salvage partial images after timeout', taskId, urls.length);
+        await logTask(taskId, 'warn', 'salvage partial images after timeout', { count: urls.length });
         return;
       }
     }
@@ -756,6 +770,7 @@ export async function runGenerationTask(taskId) {
         }
       });
       console.log('[task:generation] salvage text after image failure', taskId);
+      await logTask(taskId, 'warn', 'salvage text after image failure');
       return;
     }
 
@@ -790,7 +805,7 @@ export async function runImageTask(taskId) {
         remoteUrl: storedUrl === imageUrl ? undefined : imageUrl,
         caption: '配图',
         sourceType: 'ai',
-        credit: 'AI 生成配图'
+        credit: AI_IMAGE_CREDIT
       }
     ];
     await saveImages(taskId, [storedUrl], meta);
@@ -815,6 +830,7 @@ export async function runImageTask(taskId) {
 }
 
 export function enqueueGenerationTask(taskId) {
+  logTask(taskId, 'info', 'queued').catch(() => {});
   setImmediate(() => {
     runGenerationTask(taskId).catch((err) => console.error('[task:generation:unhandled]', err));
   });
@@ -1003,7 +1019,7 @@ async function runRegenerateOneImage(taskId, index) {
   console.log('[task:regen-image] start', taskId, index + 1, imageSource, searchQuery);
 
   let hitUrl;
-  let credit = imageSource === 'web' ? '网络公开检索' : 'AI 生成配图';
+  let credit = imageSource === 'web' ? '网络公开检索' : AI_IMAGE_CREDIT;
   let photographer = '';
   let sourceUrl = '';
 
@@ -1072,12 +1088,12 @@ async function runRegenerateOneImage(taskId, index) {
   const cleanUrls = imageUrls.filter(Boolean);
   await saveImages(taskId, cleanUrls, cleanMeta);
 
-  if (imageSource === 'web') {
+  if (imageSource === 'web' || imageSource === 'ai') {
     const body = stripWebAttribution(String(task.output || ''));
     await prisma.generationRecord.update({
       where: { id: taskId },
       data: {
-        output: body + buildWebImageAttribution(cleanMeta),
+        output: body + buildImageAttribution(imageSource, cleanMeta),
         error: null,
         status: TASK_STATUS.COMPLETED
       }

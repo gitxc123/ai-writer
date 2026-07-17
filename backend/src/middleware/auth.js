@@ -1,7 +1,14 @@
 import jwt from 'jsonwebtoken';
+import { resolveJwtSecret } from '../lib/security-config.js';
+
+function jwtSecret() {
+  const r = resolveJwtSecret();
+  if (!r.ok) throw new Error(r.message);
+  return r.secret;
+}
 
 export function signToken(userId) {
-  return jwt.sign({ userId }, process.env.JWT_SECRET || 'dev-secret', { expiresIn: '7d' });
+  return jwt.sign({ userId }, jwtSecret(), { expiresIn: '7d' });
 }
 
 export function authMiddleware(req, res, next) {
@@ -11,7 +18,7 @@ export function authMiddleware(req, res, next) {
     return res.status(401).json({ code: 401, message: '请先登录' });
   }
   try {
-    const payload = jwt.verify(token, process.env.JWT_SECRET || 'dev-secret');
+    const payload = jwt.verify(token, jwtSecret());
     req.userId = payload.userId;
     next();
   } catch {

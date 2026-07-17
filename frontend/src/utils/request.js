@@ -21,6 +21,10 @@ export function request({ url, method = 'GET', data }) {
           reject(new Error('请先登录'));
           return;
         }
+        if (res.statusCode === 429 || res.data?.code === 429) {
+          reject(new Error(res.data?.message || '请求过于频繁，请稍后再试'));
+          return;
+        }
         if (res.statusCode === 403 || res.data?.code === 403 || res.data?.needVip) {
           const err = new Error(res.data?.message || '请先开通会员');
           err.needVip = true;
@@ -85,6 +89,7 @@ export const api = {
     request({ url: '/auth/register', method: 'POST', data: { phone, password, inviteCode } }),
   getMe: () => request({ url: '/user/me' }),
   getMemberPlans: () => request({ url: '/membership/plans' }),
+  getMembershipConfig: () => request({ url: '/membership/config' }),
   getMembershipMe: () => request({ url: '/membership/me' }),
   createMemberOrder: (planId) =>
     request({ url: '/membership/order', method: 'POST', data: { planId } }),
@@ -115,6 +120,15 @@ export const api = {
   localizeRecordImages: (id) =>
     request({ url: `/records/${id}/localize-images`, method: 'POST' }),
   resumeTasks: () => request({ url: '/records/resume', method: 'POST' }),
+  getLogsMeta: () => request({ url: '/logs/meta' }),
+  getLogs: (params = {}) => {
+    const q = new URLSearchParams();
+    if (params.taskId) q.set('taskId', params.taskId);
+    if (params.limit) q.set('limit', String(params.limit));
+    if (params.before) q.set('before', params.before);
+    const qs = q.toString();
+    return request({ url: `/logs${qs ? `?${qs}` : ''}` });
+  },
   getHotTopics: (params = {}) => {
     const q = new URLSearchParams();
     if (params.templateId) q.set('templateId', params.templateId);

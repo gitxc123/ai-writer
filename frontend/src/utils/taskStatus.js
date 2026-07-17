@@ -4,7 +4,8 @@ export const STATUS_MAP = {
   pending: { label: '排队中', class: 'status-pending' },
   processing: { label: '生成中', class: 'status-processing' },
   completed: { label: '已完成', class: 'status-completed' },
-  failed: { label: '失败', class: 'status-failed' }
+  failed: { label: '失败', class: 'status-failed' },
+  removed: { label: '已下架', class: 'status-failed' }
 };
 
 export function getStatusMeta(status) {
@@ -36,6 +37,9 @@ export function isRunning(status) {
 }
 
 export function getPreviewText(item) {
+  if (item.status === 'removed') {
+    return '内容已下架（投诉或合规处理）';
+  }
   if (item.status === 'failed') {
     return toUserErrorMessage(item.error, '生成失败，请稍后重试');
   }

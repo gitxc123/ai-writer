@@ -52,10 +52,15 @@
         <text class="pay-label">应付</text>
         <text class="pay-amount">¥{{ currentPlan?.price ?? '-' }}</text>
       </view>
-      <view class="pay-btn" :class="{ disabled: paying }" @click="pay">
-        {{ paying ? '处理中…' : '确认支付（演示）' }}
+      <view
+        class="pay-btn"
+        :class="{ disabled: paying || !demoPayEnabled }"
+        @click="pay"
+      >
+        {{ payButtonText }}
       </view>
     </view>
+    <text v-if="!demoPayEnabled" class="pay-off-tip">在线支付暂未开通，请联系运营人工开通会员</text>
   </view>
 </template>
 
@@ -70,12 +75,24 @@ const selected = ref('monthly');
 const paying = ref(false);
 const commissions = ref([]);
 const commissionTotal = ref(0);
+const demoPayEnabled = ref(true);
 
 const currentPlan = computed(() => plans.value.find((p) => p.id === selected.value));
+const payButtonText = computed(() => {
+  if (!demoPayEnabled.value) return '支付未开通';
+  if (paying.value) return '处理中…';
+  return '确认支付（演示）';
+});
 
 onMounted(async () => {
   if (!userStore.checkLogin()) return;
   try {
+    try {
+      const cfg = await api.getMembershipConfig();
+      demoPayEnabled.value = cfg?.demoPayEnabled !== false;
+    } catch {
+      demoPayEnabled.value = true;
+    }
     plans.value = await api.getMemberPlans();
     if (plans.value.length && !plans.value.find((p) => p.id === selected.value)) {
       selected.value = plans.value[0].id;
@@ -109,6 +126,10 @@ function formatDate(v) {
 
 async function pay() {
   if (paying.value || !currentPlan.value) return;
+  if (!demoPayEnabled.value) {
+    uni.showToast({ title: '在线支付暂未开通', icon: 'none' });
+    return;
+  }
   if (!userStore.checkLogin()) return;
   paying.value = true;
   try {
@@ -301,5 +322,13 @@ async function pay() {
 }
 .pay-btn.disabled {
   opacity: 0.6;
+}
+.pay-off-tip {
+  display: block;
+  text-align: center;
+  font-size: 24rpx;
+  color: #909399;
+  margin-top: 16rpx;
+  padding-bottom: 24rpx;
 }
 </style>

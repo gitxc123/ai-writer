@@ -6,7 +6,11 @@
     { "path": "pages/mine/index", "style": { "navigationBarTitleText": "我的" } },
     { "path": "pages/login/login", "style": { "navigationBarTitleText": "登录" } },
     { "path": "pages/create/create", "style": { "navigationBarTitleText": "AI 创作" } },
-    { "path": "pages/vip/index", "style": { "navigationBarTitleText": "开通会员" } }
+    { "path": "pages/vip/index", "style": { "navigationBarTitleText": "开通会员" } },
+    { "path": "pages/legal/terms", "style": { "navigationBarTitleText": "用户协议" } },
+    { "path": "pages/legal/privacy", "style": { "navigationBarTitleText": "隐私政策" } },
+    { "path": "pages/legal/complaint", "style": { "navigationBarTitleText": "投诉与反馈" } },
+    { "path": "pages/logs/index", "style": { "navigationBarTitleText": "运行日志" } }
   ],
   "globalStyle": {
     "navigationBarTextStyle": "black",

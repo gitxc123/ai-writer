@@ -39,7 +39,30 @@ const MIGRATIONS = [
     createdAt DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
     FOREIGN KEY (agentId) REFERENCES User(id)
   )`,
-  'CREATE UNIQUE INDEX IF NOT EXISTS User_inviteCode_key ON User(inviteCode)'
+  'CREATE UNIQUE INDEX IF NOT EXISTS User_inviteCode_key ON User(inviteCode)',
+  `CREATE TABLE IF NOT EXISTS Complaint (
+    id TEXT PRIMARY KEY NOT NULL,
+    recordId TEXT NOT NULL,
+    contact TEXT NOT NULL,
+    reason TEXT NOT NULL,
+    evidenceUrl TEXT,
+    status TEXT NOT NULL DEFAULT 'pending',
+    note TEXT,
+    createdAt DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
+    resolvedAt DATETIME
+  )`,
+  'CREATE INDEX IF NOT EXISTS Complaint_recordId_idx ON Complaint(recordId)',
+  'CREATE INDEX IF NOT EXISTS Complaint_status_idx ON Complaint(status)',
+  `CREATE TABLE IF NOT EXISTS TaskLog (
+    id TEXT PRIMARY KEY NOT NULL,
+    taskId TEXT,
+    level TEXT NOT NULL,
+    message TEXT NOT NULL,
+    meta TEXT,
+    createdAt DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP
+  )`,
+  'CREATE INDEX IF NOT EXISTS TaskLog_createdAt_idx ON TaskLog(createdAt)',
+  'CREATE INDEX IF NOT EXISTS TaskLog_taskId_createdAt_idx ON TaskLog(taskId, createdAt)'
 ];
 
 export async function ensureSchema() {

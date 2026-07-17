@@ -9,6 +9,7 @@ unpackage/
 .DS_Store
 
 .superpowers
+.worktrees/
 
 backend/uploads/*
 !backend/uploads/.gitkeep

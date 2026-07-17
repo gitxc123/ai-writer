@@ -11,18 +11,46 @@
       </view>
     </view>
 
-    <view v-if="userStore.isLogin" class="menu">
-      <view class="menu-item vip" @click="goVip">
+    <view class="menu">
+      <view v-if="userStore.isLogin" class="menu-item vip" @click="goVip">
         <view>
           <text class="menu-title">会员中心</text>
           <text class="menu-sub">试用 ¥9.9 · 月卡 ¥59.9 · 年卡 ¥299 · 永久代理 ¥499</text>
         </view>
         <text class="arrow">›</text>
       </view>
-      <view v-if="userStore.user?.isAgent" class="menu-item" @click="goVip">
+      <view v-if="userStore.isLogin && userStore.user?.isAgent" class="menu-item" @click="goVip">
         <view>
           <text class="menu-title">代理收益</text>
           <text class="menu-sub">邀请码 {{ userStore.user.inviteCode }} · 分成 50%</text>
+        </view>
+        <text class="arrow">›</text>
+      </view>
+      <view v-if="userStore.isLogin && canViewLogs" class="menu-item" @click="goLogs">
+        <view>
+          <text class="menu-title">运行日志</text>
+          <text class="menu-sub">按任务 ID 查看生成过程</text>
+        </view>
+        <text class="arrow">›</text>
+      </view>
+      <view class="menu-item" @click="goLegal('/pages/legal/terms')">
+        <view>
+          <text class="menu-title">用户协议</text>
+          <text class="menu-sub">服务说明与用户责任</text>
+        </view>
+        <text class="arrow">›</text>
+      </view>
+      <view class="menu-item" @click="goLegal('/pages/legal/privacy')">
+        <view>
+          <text class="menu-title">隐私政策</text>
+          <text class="menu-sub">信息收集与 180 天留存说明</text>
+        </view>
+        <text class="arrow">›</text>
+      </view>
+      <view class="menu-item" @click="goLegal('/pages/legal/complaint')">
+        <view>
+          <text class="menu-title">投诉与反馈</text>
+          <text class="menu-sub">按任务 ID 提交侵权投诉</text>
         </view>
         <text class="arrow">›</text>
       </view>
@@ -37,14 +65,27 @@
 </template>
 
 <script setup>
-import { onMounted } from 'vue';
+import { ref, onMounted } from 'vue';
 import { useUserStore } from '../../stores/user.js';
+import { api } from '../../utils/request.js';
 import TabBar from '../../components/TabBar.vue';
 
 const userStore = useUserStore();
+const canViewLogs = ref(false);
 
-onMounted(() => {
-  if (userStore.isLogin) userStore.fetchUser();
+onMounted(async () => {
+  if (!userStore.isLogin) return;
+  await userStore.fetchUser();
+  // 白名单手机号可先显示入口；API meta 再校准
+  if (userStore.user?.phone === '17682160819') {
+    canViewLogs.value = true;
+  }
+  try {
+    const meta = await api.getLogsMeta();
+    canViewLogs.value = !!meta?.canViewLogs;
+  } catch {
+    // keep phone fallback
+  }
 });
 
 function goLogin() {
@@ -54,6 +95,14 @@ function goLogin() {
 function goVip() {
   if (!userStore.checkLogin()) return;
   uni.navigateTo({ url: '/pages/vip/index' });
+}
+
+function goLogs() {
+  uni.navigateTo({ url: '/pages/logs/index' });
+}
+
+function goLegal(url) {
+  uni.navigateTo({ url });
 }
 
 function logout() {

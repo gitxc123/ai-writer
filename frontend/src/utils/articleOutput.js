@@ -13,4 +13,9 @@ export function splitArticleOutput(text) {
 }
 
 export const WEB_IMAGE_SUBMIT_HINT =
-  '选择网络现场图时，文章末尾将自动附上配图来源说明与免责声明，复制发布即可。';
+  '选择网络现场图时，文章末尾将附上来源与免责声明；本服务不授予图片版权，发布前须自行取得授权。';
+
+export const AI_IMAGE_SUBMIT_HINT =
+  '选择 AI 配图时，每张图会标注「AI 生成，非现场真实照片」，文章末尾同步附上来源说明与免责声明。';
+
+export const AI_IMAGE_CREDIT = 'AI 生成配图，非现场真实照片';

@@ -28,7 +28,7 @@
 
 | 变量 | 示例 | 说明 |
 |------|------|------|
-| `JWT_SECRET` | 随机长字符串 | 必填，登录态密钥 |
+| `JWT_SECRET` | ≥32 位随机串 | **生产必填**；弱值会拒绝启动 |
 | `AI_MODE` | `agnes` | 或 `mock` / `api` |
 | `AI_API_KEY` | 你的 Agnes Key | 必填（mock 模式可空） |
 | `AI_BASE_URL` | `https://apihub.agnes-ai.com/v1` | Agnes 默认 |
@@ -36,6 +36,11 @@
 | `PUBLIC_BASE_URL` | `https://你的域名.up.railway.app` | 部署成功后填公网地址，方便配图 |
 | `AI_FALLBACK_API_KEY` | DeepSeek Key（可选） | Agnes 挂了时兜底 |
 | `PEXELS_API_KEY` | （可选） | 网络搜图更好用 |
+| `COMPLAINT_EMAIL` | `legal@你的域名.com` | 投诉页展示邮箱（勿用占位） |
+| `ADMIN_TOKEN` | ≥16 随机串 | 投诉下架管理接口鉴权 |
+| `ENABLE_DEMO_PAY` | 不设 / `0` | 生产默认关闭演示支付；内测可设 `1` |
+| `DAILY_GENERATE_LIMIT` | `30` | 每用户每日生成次数上限 |
+| `STRICT_SECURITY` | `1`（可选） | 为 1 时缺投诉邮箱/ADMIN_TOKEN 则拒绝启动 |
 
 以下一般 **不用改**（Dockerfile 已设）：
 
@@ -86,3 +91,7 @@ docker run --rm -p 3001:3001 ^
 ```
 
 浏览器打开 http://localhost:3001
+
+## 合规说明
+
+产品侧已包含用户协议、隐私政策、注册勾选、网络图/AI 图免责与投诉下架能力，详见根目录 [COMPLIANCE.md](COMPLIANCE.md)。正式商用前请律师审核。

@@ -24,6 +24,10 @@
             {{ getStatusMeta(item.status).label }}
           </text>
         </view>
+        <view class="id-row" @click.stop="copyTaskId(item.id)">
+          <text class="task-id">ID {{ shortId(item.id) }}</text>
+          <text class="copy-id">复制</text>
+        </view>
         <text class="time">{{ formatTime(item.updatedAt || item.createdAt) }}</text>
         <view v-if="item.imageUrls?.length && (item.status === 'completed' || item.status === 'failed')" class="thumb-row">
           <view
@@ -144,6 +148,18 @@ function formatTime(t) {
   return new Date(t).toLocaleString('zh-CN');
 }
 
+function shortId(id) {
+  const s = String(id || '');
+  return s.length <= 10 ? s : `${s.slice(0, 8)}…`;
+}
+
+function copyTaskId(id) {
+  uni.setClipboardData({
+    data: String(id),
+    success: () => uni.showToast({ title: '任务 ID 已复制', icon: 'none' })
+  });
+}
+
 function openDetail(item) {
   if (item.taskType === 'image' && item.parentId) {
     uni.navigateTo({ url: `/pages/create/create?recordId=${item.parentId}` });
@@ -207,6 +223,8 @@ onUnmounted(stopPolling);
 }
 .info {
   flex: 1;
+  min-width: 0;
+  overflow: hidden;
 }
 .title-row {
   display: flex;
@@ -218,12 +236,17 @@ onUnmounted(stopPolling);
   font-size: 28rpx;
   font-weight: 600;
   flex: 1;
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
 }
 .status {
   font-size: 22rpx;
   padding: 4rpx 12rpx;
   border-radius: 20rpx;
   white-space: nowrap;
+  flex-shrink: 0;
 }
 .status-pending {
   background: #f4f4f5;
@@ -247,22 +270,40 @@ onUnmounted(stopPolling);
   margin-top: 8rpx;
   display: block;
 }
+.id-row {
+  display: flex;
+  align-items: center;
+  gap: 16rpx;
+  margin-top: 8rpx;
+}
+.task-id {
+  font-size: 22rpx;
+  color: #909399;
+  font-family: ui-monospace, monospace;
+}
+.copy-id {
+  font-size: 22rpx;
+  color: #0a84ff;
+}
 .thumb-row {
   display: flex;
   gap: 8rpx;
   margin-top: 12rpx;
-  align-items: center;
+  align-items: stretch;
+  width: 100%;
+  box-sizing: border-box;
+  overflow: hidden;
 }
 .thumb-wrap {
   position: relative;
-  width: 200rpx;
-  height: 200rpx;
-  flex-shrink: 0;
+  flex: 1;
+  min-width: 0;
+  height: 180rpx;
   border-radius: 12rpx;
   overflow: hidden;
 }
 .thumb-wrap.thumb-single {
-  width: 100%;
+  flex: 1 1 100%;
   height: 200rpx;
 }
 .thumb {
@@ -270,6 +311,12 @@ onUnmounted(stopPolling);
   height: 100%;
   border-radius: 12rpx;
   display: block;
+}
+/* 兼容仅有单张 imageUrl 的旧任务 */
+image.thumb.thumb-single {
+  width: 100%;
+  height: 200rpx;
+  margin-top: 12rpx;
 }
 .img-tag {
   position: absolute;
@@ -283,8 +330,10 @@ onUnmounted(stopPolling);
   line-height: 1.4;
 }
 .thumb-more {
+  flex-shrink: 0;
   font-size: 24rpx;
   color: #909399;
+  align-self: center;
 }
 .preview {
   font-size: 24rpx;

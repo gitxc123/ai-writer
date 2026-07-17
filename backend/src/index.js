@@ -12,12 +12,19 @@ import imageRoutes from './routes/images.js';
 import hotRoutes from './routes/hot.js';
 import membershipRoutes, { publicUser } from './routes/membership.js';
 import uploadRoutes from './routes/uploads.js';
+import complaintRoutes from './routes/complaints.js';
+import logRoutes from './routes/logs.js';
 import { authMiddleware } from './middleware/auth.js';
 import { prisma } from './lib/prisma.js';
 import { createAIClient, getFallbackModes } from './lib/ai.js';
 import { ensureSchema } from './lib/ensure-schema.js';
 import { resumeStuckTasks } from './lib/task-runner.js';
 import { UPLOAD_DIR, ensureUploadDir } from './lib/public-url.js';
+import { purgeTaskLogs } from './lib/logger.js';
+import { assertSecurityOnBoot } from './lib/security-config.js';
+import { rateLimit, ipKey, userOrIpKey } from './lib/rate-limit.js';
+
+assertSecurityOnBoot();
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 const app = express();
@@ -41,14 +48,46 @@ app.get('/api/user/me', authMiddleware, async (req, res) => {
   res.json({ code: 200, data: publicUser(user) });
 });
 
-app.use('/api/auth', authRoutes);
+app.use(
+  '/api/auth',
+  rateLimit({
+    name: 'auth',
+    windowMs: 60_000,
+    max: Number(process.env.RATE_LIMIT_AUTH_PER_MIN || 20),
+    key: ipKey,
+    message: '登录/注册过于频繁，请稍后再试'
+  }),
+  authRoutes
+);
 app.use('/api/templates', templateRoutes);
-app.use('/api/generate', generateRoutes);
+app.use(
+  '/api/generate',
+  rateLimit({
+    name: 'generate',
+    windowMs: 60_000,
+    max: Number(process.env.RATE_LIMIT_GENERATE_PER_MIN || 20),
+    key: userOrIpKey,
+    message: '提交过于频繁，请稍后再试'
+  }),
+  generateRoutes
+);
 app.use('/api/records', recordRoutes);
-app.use('/api/images', imageRoutes);
+app.use(
+  '/api/images',
+  rateLimit({
+    name: 'images',
+    windowMs: 60_000,
+    max: Number(process.env.RATE_LIMIT_IMAGES_PER_MIN || 30),
+    key: userOrIpKey,
+    message: '配图请求过于频繁，请稍后再试'
+  }),
+  imageRoutes
+);
 app.use('/api/hot', hotRoutes);
 app.use('/api/membership', membershipRoutes);
 app.use('/api/uploads', uploadRoutes);
+app.use('/api/complaints', complaintRoutes);
+app.use('/api/logs', logRoutes);
 
 await ensureSchema();
 
@@ -75,6 +114,12 @@ app.listen(port, '0.0.0.0', async () => {
     console.log('AI fallback: off');
   }
   console.log('Task mode: async (pending -> processing -> completed/failed)');
+  try {
+    const n = await purgeTaskLogs();
+    if (n) console.log('[logger] purged task logs', n);
+  } catch (err) {
+    console.warn('[logger] purge on boot failed', err.message);
+  }
   try {
     await resumeStuckTasks();
   } catch (err) {

@@ -15,6 +15,7 @@ import {
   MIN_STORY_CHARS,
   MAX_STORY_CHARS
 } from '../lib/storyboard.js';
+import { checkDailyGenerateQuota } from '../lib/quota.js';
 
 const router = Router();
 
@@ -31,6 +32,16 @@ router.post('/', authMiddleware, async (req, res) => {
         code: 403,
         message: '请先开通会员后再创作',
         needVip: true
+      });
+    }
+
+    const overQuota = await checkDailyGenerateQuota(req.userId);
+    if (overQuota) {
+      return res.status(429).json({
+        code: 429,
+        message: overQuota.message,
+        used: overQuota.used,
+        limit: overQuota.limit
       });
     }
 

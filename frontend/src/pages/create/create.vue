@@ -244,7 +244,7 @@
             @click="imageSource = 'ai'"
           >
             <text class="source-title">AI 配图</text>
-            <text class="source-desc">风格统一，适合种草/创意</text>
+            <text class="source-desc">AI 生成，非现场真实照片</text>
           </view>
           <view
             class="source-card"
@@ -255,6 +255,8 @@
             <text class="source-desc">真实照片，适合新闻/赛事</text>
           </view>
         </view>
+        <text v-if="imageSource === 'ai'" class="source-hint">{{ aiImageSubmitHint }}</text>
+        <text v-else class="source-hint">{{ webImageSubmitHint }}</text>
       </view>
 
       <view v-if="!isProductIntro && !isStoryboard && imageCount > 0 && imageSource === 'ai'" class="field">
@@ -278,6 +280,10 @@
     </view>
 
     <view v-if="output || isRunning(taskStatus)" class="result">
+      <view v-if="currentRecordId" class="task-id-bar" @click="copyCurrentTaskId">
+        <text>任务 ID：{{ shortTaskId(currentRecordId) }}</text>
+        <text class="copy-link">复制</text>
+      </view>
       <view v-if="canCopyResult" class="platform-bar">
         <text class="platform-name">已适配：{{ platformInfo.name }}</text>
         <text class="platform-tip">{{ platformInfo.tip }}</text>
@@ -379,7 +385,7 @@ import { onLoad } from '@dcloudio/uni-app';
 import { api, uploadProductPhoto } from '../../utils/request.js';
 import { useUserStore } from '../../stores/user.js';
 import { getStatusMeta, isRunning } from '../../utils/taskStatus.js';
-import { splitArticleOutput } from '../../utils/articleOutput.js';
+import { splitArticleOutput, WEB_IMAGE_SUBMIT_HINT, AI_IMAGE_SUBMIT_HINT } from '../../utils/articleOutput.js';
 import { enrichTemplateFields } from '../../utils/fieldGuides.js';
 import { buildPlatformPack, copyPlatformPack, detectPlatform } from '../../utils/platformExport.js';
 import { clampToutiaoTitle, charLen } from '../../utils/platformLimits.js';
@@ -546,6 +552,8 @@ const exportTitle = computed(() => exportPackPreview.value.title || '');
 
 const articleBody = computed(() => splitArticleOutput(output.value).body);
 const attributionFooter = computed(() => splitArticleOutput(output.value).footer);
+const aiImageSubmitHint = AI_IMAGE_SUBMIT_HINT;
+const webImageSubmitHint = WEB_IMAGE_SUBMIT_HINT;
 const storyboardShots = computed(() =>
   isStoryboard.value ? parseStoryboardShots(output.value) : []
 );
@@ -775,6 +783,19 @@ async function loadHotTopics() {
   } finally {
     hotLoading.value = false;
   }
+}
+
+function shortTaskId(id) {
+  const s = String(id || '');
+  return s.length <= 10 ? s : `${s.slice(0, 8)}…`;
+}
+
+function copyCurrentTaskId() {
+  if (!currentRecordId.value) return;
+  uni.setClipboardData({
+    data: String(currentRecordId.value),
+    success: () => uni.showToast({ title: '任务 ID 已复制', icon: 'none' })
+  });
 }
 
 async function loadTask(id) {
@@ -1414,6 +1435,20 @@ function goTasks() {
   padding: 32rpx;
   margin-top: 24rpx;
 }
+.task-id-bar {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  font-size: 24rpx;
+  color: #606266;
+  background: #f4f6fa;
+  border-radius: 10rpx;
+  padding: 16rpx 20rpx;
+  margin-bottom: 16rpx;
+}
+.task-id-bar .copy-link {
+  color: #0a84ff;
+}
 .result-title {
   font-size: 30rpx;
   font-weight: 600;
@@ -1509,6 +1544,13 @@ function goTasks() {
   color: #909399;
   margin-top: 6rpx;
   display: block;
+}
+.source-hint {
+  font-size: 22rpx;
+  color: #909399;
+  margin-top: 12rpx;
+  display: block;
+  line-height: 1.5;
 }
 .image-card {
   margin-bottom: 8rpx;
