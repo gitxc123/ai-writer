@@ -26,7 +26,8 @@ import { useUserStore } from '../../stores/user.js';
 
 const phone = ref('');
 const password = ref('');
-const agreed = ref(false);
+const TERMS_KEY = 'terms_agreed_v1';
+const agreed = ref(uni.getStorageSync(TERMS_KEY) === '1');
 const userStore = useUserStore();
 
 function goTerms() {
@@ -52,8 +53,13 @@ async function handleLogin() {
   }
   try {
     await userStore.login(phone.value, password.value, { acceptedTerms: true });
+    uni.setStorageSync(TERMS_KEY, '1');
     uni.showToast({ title: '登录成功' });
-    setTimeout(() => uni.navigateBack(), 500);
+    setTimeout(() => {
+      uni.navigateBack({
+        fail: () => uni.reLaunch({ url: '/pages/index/index' })
+      });
+    }, 500);
   } catch (e) {
     uni.showToast({ title: e.message, icon: 'none' });
   }

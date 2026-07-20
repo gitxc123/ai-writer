@@ -106,7 +106,7 @@ onMounted(async () => {
   if (!userStore.user?.canIssueCodes) {
     uni.showToast({ title: '仅发码账号可进入', icon: 'none' });
     setTimeout(() => {
-      uni.navigateBack({ fail: () => uni.switchTab({ url: '/pages/mine/index' }) });
+      uni.navigateBack({ fail: () => uni.reLaunch({ url: '/pages/mine/index' }) });
     }, 800);
     return;
   }

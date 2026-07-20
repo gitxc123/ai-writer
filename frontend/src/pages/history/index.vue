@@ -3,13 +3,19 @@
     <view class="toolbar">
       <text class="toolbar-title">任务列表</text>
       <view class="toolbar-actions">
-        <text class="refresh-btn" @click="resumeStuck">恢复卡住</text>
         <text class="refresh-btn" @click="loadTasks(true)">刷新</text>
+        <text class="refresh-btn muted" @click="showOps = !showOps">{{ showOps ? '收起' : '更多' }}</text>
       </view>
+    </view>
+    <view v-if="showOps" class="ops-row">
+      <text class="ops-btn" @click="resumeStuck">恢复卡住的任务</text>
     </view>
 
     <view v-if="loading" class="empty">任务加载中…</view>
-    <view v-else-if="records.length === 0" class="empty">暂无任务</view>
+    <view v-else-if="records.length === 0" class="empty empty-box">
+      <text class="empty-text">暂无任务</text>
+      <view class="empty-cta" @click="goTemplates">去选模板</view>
+    </view>
 
     <view
       v-for="item in records"
@@ -25,10 +31,13 @@
             {{ getStatusMeta(item.status).label }}
           </text>
         </view>
-        <view class="id-row">
+        <view v-if="expandedIds[item.id]" class="id-row">
           <text class="task-id">ID {{ shortId(item.id) }}</text>
           <text class="copy-id" @click.stop="copyTaskId(item.id)">复制</text>
         </view>
+        <text class="meta-toggle" @click.stop="toggleId(item.id)">
+          {{ expandedIds[item.id] ? '收起 ID' : '查看 ID' }}
+        </text>
         <text class="time">{{ formatTime(item.updatedAt || item.createdAt) }}</text>
         <view v-if="item.imageUrls?.length && (item.status === 'completed' || item.status === 'failed')" class="thumb-row">
           <view
@@ -60,7 +69,7 @@
 </template>
 
 <script setup>
-import { ref, onMounted } from 'vue';
+import { ref, reactive, onMounted } from 'vue';
 import { onShow } from '@dcloudio/uni-app';
 import { api } from '../../utils/request.js';
 import { useUserStore } from '../../stores/user.js';
@@ -81,6 +90,16 @@ const records = ref([]);
 const loading = ref(false);
 const backgroundLoading = ref(false);
 const userStore = useUserStore();
+const showOps = ref(false);
+const expandedIds = reactive({});
+
+function toggleId(id) {
+  expandedIds[id] = !expandedIds[id];
+}
+
+function goTemplates() {
+  uni.redirectTo({ url: '/pages/templates/index' });
+}
 
 const IMAGE_TYPE_LABELS = {
   enhanced: '已修复',
@@ -224,11 +243,44 @@ onShow(() => {
   font-size: 26rpx;
   color: #0a84ff;
 }
+.refresh-btn.muted {
+  color: #909399;
+}
+.ops-row {
+  margin: -4rpx 0 16rpx;
+}
+.ops-btn {
+  font-size: 24rpx;
+  color: #909399;
+}
 .empty {
   text-align: center;
   color: #909399;
   padding: 120rpx 0;
   font-size: 28rpx;
+}
+.empty-box {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 24rpx;
+}
+.empty-text {
+  font-size: 28rpx;
+  color: #909399;
+}
+.empty-cta {
+  background: #0a84ff;
+  color: #fff;
+  font-size: 28rpx;
+  padding: 16rpx 40rpx;
+  border-radius: 999rpx;
+}
+.meta-toggle {
+  display: block;
+  font-size: 22rpx;
+  color: #909399;
+  margin-top: 6rpx;
 }
 .record-item {
   background: #fff;

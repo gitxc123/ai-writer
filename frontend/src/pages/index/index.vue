@@ -11,7 +11,7 @@
       <text class="tip-body">{{ tip.body }}</text>
       <view class="tip-actions">
         <text class="tip-link" @click="nextTip">下一条</text>
-        <view class="tip-cta" @click="goTemplates">去创作</view>
+        <view class="tip-cta" @click="goTemplates">选模板</view>
       </view>
     </view>
 
@@ -31,7 +31,6 @@
 
     <view class="section-title">文案工具</view>
     <view class="tool-row">
-      <view class="tool-item" @click="goTemplates">浏览全部模板</view>
       <view class="tool-item" @click="goTasks">查看全部任务</view>
     </view>
 
@@ -77,12 +76,12 @@ function openCreate(id) {
 }
 
 function goTemplates() {
-  uni.reLaunch({ url: '/pages/templates/index' });
+  uni.redirectTo({ url: '/pages/templates/index' });
 }
 
 function goTasks() {
   if (!userStore.checkLogin()) return;
-  uni.reLaunch({ url: '/pages/history/index' });
+  uni.redirectTo({ url: '/pages/history/index' });
 }
 </script>
 

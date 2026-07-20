@@ -1,7 +1,9 @@
 <template>
   <view class="page">
     <view class="user-card">
-      <view class="avatar">👤</view>
+      <view class="avatar" :style="{ background: displayAvatar.bg }">
+        <text class="avatar-emoji">{{ displayAvatar.emoji }}</text>
+      </view>
       <view class="info">
         <text class="name">{{ userStore.user?.nickName || '未登录' }}</text>
         <text class="phone" v-if="userStore.user">{{ userStore.user.phone }}</text>
@@ -15,14 +17,14 @@
       <view class="menu-item vip" @click="goActivate">
         <view>
           <text class="menu-title">激活码开通</text>
-          <text class="menu-sub">输入激活码开通或顺延会员</text>
+          <text class="menu-sub">有激活码？点这里开通或续期</text>
         </view>
         <text class="arrow">›</text>
       </view>
       <view class="menu-item" @click="goVip">
         <view>
-          <text class="menu-title">会员规则</text>
-          <text class="menu-sub">试用 · 月卡 · 年卡 · 永久；代理请咨询客服</text>
+          <text class="menu-title">会员规则与价格</text>
+          <text class="menu-sub">套餐说明 · 联系客服开通</text>
         </view>
         <text class="arrow">›</text>
       </view>
@@ -106,10 +108,11 @@
 </template>
 
 <script setup>
-import { ref, onMounted } from 'vue';
+import { ref, computed, onMounted } from 'vue';
 import { useUserStore } from '../../stores/user.js';
 import { api } from '../../utils/request.js';
 import TabBar from '../../components/TabBar.vue';
+import { resolveAvatar } from '../../utils/avatars.js';
 
 const userStore = useUserStore();
 const canViewLogs = ref(false);
@@ -117,6 +120,10 @@ const showDeletePanel = ref(false);
 const deletePassword = ref('');
 const deleteConfirm = ref('');
 const deleting = ref(false);
+
+const displayAvatar = computed(() =>
+  resolveAvatar(userStore.user?.avatar, userStore.user?.id || userStore.user?.phone || 'guest')
+);
 
 onMounted(async () => {
   if (!userStore.isLogin) return;
@@ -224,8 +231,12 @@ function logout() {
   display: flex;
   align-items: center;
   justify-content: center;
-  font-size: 48rpx;
   margin-right: 24rpx;
+  flex-shrink: 0;
+}
+.avatar-emoji {
+  font-size: 52rpx;
+  line-height: 1;
 }
 .info {
   flex: 1;

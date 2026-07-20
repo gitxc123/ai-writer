@@ -65,6 +65,7 @@ const MIGRATIONS = [
   'CREATE INDEX IF NOT EXISTS TaskLog_taskId_createdAt_idx ON TaskLog(taskId, createdAt)',
   'ALTER TABLE User ADD COLUMN termsAcceptedAt DATETIME',
   'ALTER TABLE User ADD COLUMN ageConfirmedAt DATETIME',
+  'ALTER TABLE User ADD COLUMN avatar TEXT DEFAULT ""',
   `CREATE TABLE IF NOT EXISTS ActivationCode (
     id TEXT PRIMARY KEY NOT NULL,
     code TEXT NOT NULL,

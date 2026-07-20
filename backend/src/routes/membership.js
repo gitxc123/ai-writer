@@ -20,6 +20,7 @@ import {
   listAgentCodes,
   ensureCodeIssuerPrivileges
 } from '../lib/activation-codes.js';
+import { isValidAvatarId } from '../lib/avatars.js';
 
 const router = Router();
 
@@ -42,6 +43,7 @@ function publicUser(user) {
     id: user.id,
     phone: user.phone,
     nickName: user.nickName,
+    avatar: isValidAvatarId(user.avatar) ? user.avatar : '',
     memberPlan: user.memberPlan || 'none',
     memberExpireAt: user.memberExpireAt,
     isMember: isMemberActive(user),
@@ -78,6 +80,9 @@ router.get('/me', authMiddleware, async (req, res) => {
   if (canIssueActivationCodes(user) && !user.isAgent) {
     user = (await ensureCodeIssuerPrivileges(user.phone)) || user;
   }
+
+  const { ensureUserAvatar } = await import('../lib/avatars.js');
+  user = await ensureUserAvatar(prisma, user);
 
   let commissionSummary = null;
   if (user.isAgent) {

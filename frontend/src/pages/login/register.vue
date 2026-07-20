@@ -80,8 +80,10 @@ async function handleRegister() {
       acceptedTerms: true,
       ageConfirmed: true
     });
-    uni.showToast({ title: '注册成功，请登录', icon: 'none' });
-    setTimeout(() => goLogin(), 600);
+    uni.showToast({ title: '注册成功' });
+    setTimeout(() => {
+      uni.reLaunch({ url: '/pages/index/index' });
+    }, 500);
   } catch (e) {
     uni.showToast({ title: e.message, icon: 'none' });
   } finally {

@@ -236,6 +236,13 @@
       </view>
 
       <view v-if="!isProductIntro && !isStoryboard && imageCount > 0" class="field">
+        <view class="advanced-toggle" @click="imageAdvancedOpen = !imageAdvancedOpen">
+          <text class="advanced-toggle-text">配图高级设置</text>
+          <text class="advanced-toggle-arrow">{{ imageAdvancedOpen ? '收起' : '展开' }}</text>
+        </view>
+      </view>
+
+      <view v-if="!isProductIntro && !isStoryboard && imageCount > 0 && imageAdvancedOpen" class="field">
         <text class="label">配图来源</text>
         <view class="source-row">
           <view
@@ -259,7 +266,10 @@
         <text v-else class="source-hint">{{ webImageSubmitHint }}</text>
       </view>
 
-      <view v-if="!isProductIntro && !isStoryboard && imageCount > 0 && imageSource === 'ai'" class="field">
+      <view
+        v-if="!isProductIntro && !isStoryboard && imageCount > 0 && imageAdvancedOpen && imageSource === 'ai'"
+        class="field"
+      >
         <text class="label">尺寸</text>
         <view class="size-row">
           <view
@@ -274,7 +284,10 @@
         </view>
       </view>
 
-      <view v-if="!isProductIntro && !isStoryboard && imageCount > 0 && imageSource === 'ai'" class="field">
+      <view
+        v-if="!isProductIntro && !isStoryboard && imageCount > 0 && imageAdvancedOpen && imageSource === 'ai'"
+        class="field"
+      >
         <text class="label">配图提示词（可选，每张独立）</text>
         <view
           v-for="(_, idx) in customImagePrompts"
@@ -294,7 +307,6 @@
         <text class="field-tip">每张可单独填写；留空的仍自动生成，有填写的不再改写。</text>
       </view>
 
-      <text class="peak-hint">高峰期（如晚间）服务可能繁忙，文案或配图偶发失败属正常，失败后可在任务列表重试。</text>
       <text class="quota-hint">每日最多 {{ dailyGenerateLimit }} 次创作。</text>
       <view class="btn" :class="{ disabled: submitting }" @click="submitTask">
         {{ submitting ? '提交中...' : submitLabel }}
@@ -302,9 +314,14 @@
     </view>
 
     <view v-if="output || isRunning(taskStatus)" class="result">
-      <view v-if="currentRecordId" class="task-id-bar">
-        <text>任务 ID：{{ shortTaskId(currentRecordId) }}</text>
-        <text class="copy-link" @click.stop="copyCurrentTaskId">复制</text>
+      <view v-if="currentRecordId" class="task-meta">
+        <text class="task-meta-toggle" @click="showTaskMeta = !showTaskMeta">
+          {{ showTaskMeta ? '收起详情' : '任务详情' }}
+        </text>
+        <view v-if="showTaskMeta" class="task-id-bar">
+          <text>任务 ID：{{ shortTaskId(currentRecordId) }}</text>
+          <text class="copy-link" @click.stop="copyCurrentTaskId">复制</text>
+        </view>
       </view>
       <view v-if="canCopyResult" class="platform-bar">
         <text class="platform-name">已适配：{{ platformInfo.name }}</text>
@@ -312,7 +329,7 @@
       </view>
 
       <text class="result-title">{{ isStoryboard ? '分镜结果' : '文案结果' }}</text>
-      <text v-if="isRunning(taskStatus) && !output" class="result-text muted">文案生成中，可前往任务列表查看进度...</text>
+      <text v-if="isRunning(taskStatus) && !output" class="result-text muted">文案生成中，请稍候…</text>
 
       <!-- 分镜：按镜头卡片 + 一键复制 -->
       <view v-else-if="isStoryboard && storyboardShots.length" class="shot-list">
@@ -345,19 +362,28 @@
           {{ copying ? '复制中...' : `一键复制图文 · ${platformInfo.name}` }}
         </view>
         <view
+          v-else
+          class="btn copy-main"
+          @click="copyTextOnly"
+        >
+          复制文案
+        </view>
+      </view>
+      <view v-if="canCopyResult && !isStoryboard" class="copy-secondary">
+        <text
           v-if="platformInfo.id === 'toutiao' && exportTitle"
-          class="btn copy"
+          class="copy-secondary-link"
           @click="copyExportTitle"
         >
           复制标题
-        </view>
-        <view class="btn copy" :class="{ 'copy-main': !imageUrls.length }" @click="copyTextOnly">
+        </text>
+        <text
+          v-if="imageUrls.length"
+          class="copy-secondary-link"
+          @click="copyTextOnly"
+        >
           仅复制文案
-        </view>
-      </view>
-
-      <view v-if="platformInfo.id === 'toutiao' && exportTitle" class="export-tip">
-        {{ platformInfo.tip }}
+        </text>
       </view>
 
       <view v-if="imageUrls.length || (isRunning(taskStatus) && imageCount > 0)" class="image-section">
@@ -366,7 +392,7 @@
           <text v-if="imageCount > 0" class="image-count">（{{ imageUrls.length }}/{{ imageCount }}）</text>
         </text>
         <text v-if="canRegenerateImage" class="result-text muted regen-hint">
-          每张配图最多重新生成 {{ imageRegenMax }} 次（不占用每日创作次数）；用尽后需新建任务。高峰期重生成也可能失败。
+          每张最多重生成 {{ imageRegenMax }} 次（不占每日次数）
         </text>
         <text v-if="isRunning(taskStatus) && imageUrls.length < imageCount" class="result-text muted">
           配图生成中，请稍候...
@@ -422,6 +448,7 @@ import {
   splitSellingPoints,
   toggleSellingPoint
 } from '../../utils/productSellingPoints.js';
+import { promptVipUpgrade } from '../../utils/vipGate.js';
 
 const template = ref(null);
 const inputs = reactive({});
@@ -431,6 +458,8 @@ const imageMeta = ref([]);
 const imageCount = ref(1);
 const imageSource = ref('ai');
 const customImagePrompts = ref(['']);
+const imageAdvancedOpen = ref(false);
+const showTaskMeta = ref(false);
 const submitting = ref(false);
 
 function resizeCustomImagePrompts(count) {
@@ -792,14 +821,7 @@ async function addProductPhotos() {
     uni.hideLoading();
     if (e?.errMsg?.includes('cancel')) return;
     if (e.needVip) {
-      uni.showModal({
-        title: '需要开通会员',
-        content: e.message || '请先开通会员后再创作',
-        confirmText: '去开通',
-        success: (r) => {
-          if (r.confirm) uni.navigateTo({ url: '/pages/vip/activate' });
-        }
-      });
+      promptVipUpgrade(e.message || '请先开通会员后再创作');
     } else {
       uni.showToast({ title: e.message || '上传失败', icon: 'none' });
     }
@@ -1001,14 +1023,7 @@ async function regenerateImage(idx) {
   } catch (e) {
     regeneratingIndexes.value = regeneratingIndexes.value.filter((i) => i !== idx);
     if (e.needVip) {
-      uni.showModal({
-        title: '需要开通会员',
-        content: e.message || '请先开通会员后再创作',
-        confirmText: '去开通',
-        success: (r) => {
-          if (r.confirm) uni.navigateTo({ url: '/pages/vip/activate' });
-        }
-      });
+      promptVipUpgrade(e.message || '请先开通会员后再创作');
     } else {
       uni.showToast({ title: e.message || '重新生成失败', icon: 'none' });
     }
@@ -1035,6 +1050,7 @@ function startPolling(id, options = {}) {
       pollInFlight = false;
     }
   };
+  tick();
   pollTimer = setInterval(tick, 4000);
 }
 
@@ -1213,41 +1229,38 @@ async function submitTask() {
     lastSubmitAt.value = Date.now();
     currentRecordId.value = data.taskId;
     taskStatus.value = data.status;
+    taskError.value = '';
+    output.value = '';
+    imageUrls.value = [];
+    imageMeta.value = [];
     const hasImages = isProductIntro.value || imageCount.value > 0;
     const tip = data.qualityTip || data.tip || '';
-    const goHistory = () => uni.reLaunch({ url: '/pages/history/index' });
+
+    startPolling(data.taskId);
 
     if (tip) {
       uni.showModal({
         title: '任务已提交',
         content: tip,
         showCancel: false,
-        confirmText: '知道了',
-        success: goHistory
+        confirmText: '知道了'
       });
-      return;
+    } else {
+      uni.showToast({
+        title: hasImages
+          ? '图文任务已提交，本页可查看进度'
+          : isStoryboard.value
+            ? '分镜任务已提交'
+            : isRewrite.value
+              ? '改写任务已提交'
+              : '文案任务已提交，本页可查看进度',
+        icon: 'none',
+        duration: 2200
+      });
     }
-
-    uni.showToast({
-      title: hasImages
-        ? '图文任务已提交'
-        : isStoryboard.value
-          ? '分镜任务已提交'
-          : isRewrite.value
-            ? '改写任务已提交'
-            : '文案任务已提交'
-    });
-    setTimeout(goHistory, 600);
   } catch (e) {
     if (e.needVip) {
-      uni.showModal({
-        title: '需要开通会员',
-        content: e.message || '请先开通会员后再创作',
-        confirmText: '去开通',
-        success: (r) => {
-          if (r.confirm) uni.navigateTo({ url: '/pages/vip/activate' });
-        }
-      });
+      promptVipUpgrade(e.message || '请先开通会员后再创作');
     } else {
       uni.showToast({ title: e.message || '提交失败，请稍后重试', icon: 'none', duration: 2800 });
     }
@@ -1346,14 +1359,7 @@ async function retryTask() {
     startPolling(currentRecordId.value);
   } catch (e) {
     if (e.needVip) {
-      uni.showModal({
-        title: '需要开通会员',
-        content: e.message || '请先开通会员后再创作',
-        confirmText: '去开通',
-        success: (r) => {
-          if (r.confirm) uni.navigateTo({ url: '/pages/vip/activate' });
-        }
-      });
+      promptVipUpgrade(e.message || '请先开通会员后再创作');
     } else {
       uni.showToast({ title: e.message || '重试失败', icon: 'none' });
     }
@@ -1368,7 +1374,7 @@ function previewImage(index) {
 }
 
 function goTasks() {
-  uni.reLaunch({ url: '/pages/history/index' });
+  uni.redirectTo({ url: '/pages/history/index' });
 }
 </script>
 
@@ -1611,14 +1617,37 @@ function goTasks() {
   flex: 1.4;
   margin-top: 0;
 }
-.export-tip {
-  margin: 12rpx 0 8rpx;
-  padding: 16rpx 20rpx;
+.copy-secondary {
+  display: flex;
+  gap: 28rpx;
+  margin-top: 16rpx;
+  flex-wrap: wrap;
+}
+.copy-secondary-link {
+  font-size: 26rpx;
+  color: #0a84ff;
+}
+.advanced-toggle {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 8rpx 0;
+}
+.advanced-toggle-text {
+  font-size: 28rpx;
+  color: #303133;
+  font-weight: 500;
+}
+.advanced-toggle-arrow {
   font-size: 24rpx;
-  line-height: 1.5;
-  color: #b88230;
-  background: #fdf6ec;
-  border-radius: 12rpx;
+  color: #909399;
+}
+.task-meta {
+  margin-bottom: 12rpx;
+}
+.task-meta-toggle {
+  font-size: 24rpx;
+  color: #909399;
 }
 .btn-row {
   display: flex;
@@ -1773,16 +1802,9 @@ function goTasks() {
   display: block;
   line-height: 1.5;
 }
-.peak-hint {
-  display: block;
-  margin: 8rpx 0 12rpx;
-  font-size: 22rpx;
-  color: #b88230;
-  line-height: 1.5;
-}
 .quota-hint {
   display: block;
-  margin: 0 0 20rpx;
+  margin: 8rpx 0 20rpx;
   font-size: 22rpx;
   color: #606266;
   line-height: 1.5;

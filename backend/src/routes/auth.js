@@ -4,6 +4,7 @@ import { prisma } from '../lib/prisma.js';
 import { authMiddleware, signToken } from '../middleware/auth.js';
 import { publicUser } from './membership.js';
 import { deleteUserAccount } from '../lib/account.js';
+import { ensureUserAvatar, assignAvatarOnCreate } from '../lib/avatars.js';
 
 const router = Router();
 
@@ -52,6 +53,8 @@ router.post('/register', async (req, res) => {
       invitedBy
     }
   });
+  const avatar = await assignAvatarOnCreate(prisma, user.id);
+  user.avatar = avatar;
 
   try {
     await prisma.$executeRawUnsafe(
@@ -87,10 +90,11 @@ router.post('/login', async (req, res) => {
   if (!ok) {
     return res.status(400).json({ code: 400, message: '密码错误' });
   }
-  const token = signToken(user.id);
+  const ensured = await ensureUserAvatar(prisma, user);
+  const token = signToken(ensured.id);
   res.json({
     code: 200,
-    data: { token, user: publicUser(user) }
+    data: { token, user: publicUser(ensured) }
   });
 });
 

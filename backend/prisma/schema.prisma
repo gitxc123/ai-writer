@@ -12,6 +12,7 @@ model User {
   phone          String   @unique
   passwordHash   String
   nickName       String   @default("用户")
+  avatar         String   @default("")
   memberPlan     String   @default("none")
   memberExpireAt DateTime?
   isAgent        Boolean  @default(false)

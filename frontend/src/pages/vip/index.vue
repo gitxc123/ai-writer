@@ -150,7 +150,7 @@ async function payDemo() {
     await refreshMe();
     uni.showToast({ title: '开通成功', icon: 'success', duration: 1200 });
     setTimeout(() => {
-      uni.navigateBack({ fail: () => uni.switchTab({ url: '/pages/mine/index' }) });
+      uni.navigateBack({ fail: () => uni.reLaunch({ url: '/pages/mine/index' }) });
     }, 800);
   } catch (e) {
     uni.showToast({ title: e.message || '支付失败', icon: 'none' });
