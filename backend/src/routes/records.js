@@ -311,18 +311,20 @@ router.get('/:id', authMiddleware, async (req, res) => {
     imageMeta: JSON.stringify(imageMeta)
   });
 
-  const data = signRecordImageFields({
-    ...record,
-    input: formInputs,
-    imageCount: Number(input.imageCount) || imageUrls.length || 0,
-    imageSize: input.imageSize || record.imageSize || 'landscape',
-    imageSource: input.imageSource === 'web' ? 'web' : 'ai',
-    imageUrls,
-    imageMeta,
-    retry,
-    regeneratingIndexes: getRegeneratingIndexes(record.id),
-    imageRegen: buildImageRegenInfo(imageMeta, imageUrls)
-  });
+  const data = attachUploadPaths(
+    signRecordImageFields({
+      ...record,
+      input: formInputs,
+      imageCount: Number(input.imageCount) || imageUrls.length || 0,
+      imageSize: input.imageSize || record.imageSize || 'landscape',
+      imageSource: input.imageSource === 'web' ? 'web' : 'ai',
+      imageUrls,
+      imageMeta,
+      retry,
+      regeneratingIndexes: getRegeneratingIndexes(record.id),
+      imageRegen: buildImageRegenInfo(imageMeta, imageUrls)
+    })
+  );
 
   if (record.template) {
     data.template = {

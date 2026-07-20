@@ -352,7 +352,7 @@
           配图生成中，请稍候...
         </text>
         <view class="image-grid">
-          <view v-for="(item, idx) in displayImages" :key="item.url + idx" class="image-card">
+          <view v-for="(item, idx) in displayImages" :key="'img-' + (item.slotIndex ?? idx)" class="image-card">
             <view class="image-wrap">
               <image
                 class="cover-image"
@@ -360,7 +360,7 @@
                 mode="widthFix"
                 @click="previewImage(idx)"
               />
-              <view v-if="isImageRegenerating(idx)" class="img-regen-mask">
+              <view v-if="isImageRegenerating(item.slotIndex ?? idx)" class="img-regen-mask">
                 <text class="img-regen-text">重新生成中...</text>
               </view>
               <text v-if="imageTypeLabel(item.type)" class="img-tag">{{ imageTypeLabel(item.type) }}</text>
@@ -370,10 +370,10 @@
             <view
               v-if="canRegenerateImage"
               class="img-regen-btn"
-              :class="{ disabled: isImageRegenerating(idx) || !imageRegenRemaining(idx) }"
-              @click="regenerateImage(idx)"
+              :class="{ disabled: isImageRegenerating(item.slotIndex ?? idx) || !imageRegenRemaining(item.slotIndex ?? idx) }"
+              @click="regenerateImage(item.slotIndex ?? idx)"
             >
-              {{ regenButtonLabel(idx) }}
+              {{ regenButtonLabel(item.slotIndex ?? idx) }}
             </view>
           </view>
         </view>
@@ -396,6 +396,7 @@ import { buildPlatformPack, copyPlatformPack, detectPlatform } from '../../utils
 import { clampToutiaoTitle, charLen } from '../../utils/platformLimits.js';
 import { toUserErrorMessage } from '../../utils/userError.js';
 import { parseStoryboardShots } from '../../utils/storyboardShots.js';
+import { applyImageUrlCacheToRecords, extractUploadPath } from '../../utils/imageUrlCache.js';
 import {
   getSellingPointOptions,
   splitSellingPoints,
@@ -433,6 +434,7 @@ const loadError = ref('');
 const productPhotos = ref([]);
 const userStore = useUserStore();
 let pollTimer = null;
+let pollInFlight = false;
 let productPhotoSeq = 0;
 
 const sizeOptions = [
@@ -535,19 +537,17 @@ function imageTypeLabel(type) {
 }
 
 const displayImages = computed(() => {
-  const seen = new Set();
-  const fromMeta = (imageMeta.value || [])
-    .filter((meta) => meta?.url)
-    .map((meta) => ({ ...meta, url: meta.url }))
-    .filter((meta) => {
-      if (seen.has(meta.url)) return false;
-      seen.add(meta.url);
-      return true;
-    });
-  if (fromMeta.length) return fromMeta;
-  return (imageUrls.value || [])
-    .filter((url) => url && !seen.has(url) && (seen.add(url) || true))
-    .map((url) => ({ url }));
+  const meta = imageMeta.value || [];
+  const urls = imageUrls.value || [];
+  const len = Math.max(meta.length, urls.length);
+  const out = [];
+  for (let i = 0; i < len; i += 1) {
+    const m = meta[i] && typeof meta[i] === 'object' ? meta[i] : {};
+    const url = m.url || urls[i] || '';
+    if (!url) continue;
+    out.push({ ...m, url, slotIndex: i });
+  }
+  return out;
 });
 
 const exportPackPreview = computed(() =>
@@ -808,23 +808,70 @@ function copyCurrentTaskId() {
   });
 }
 
-async function loadTask(id) {
+async function loadTask(id, options = {}) {
+  const poll = options.poll === true;
   const record = await api.getRecord(id);
-  template.value = record.template;
-  Object.keys(inputs).forEach((k) => delete inputs[k]);
-  Object.assign(inputs, record.input || {});
-  productName.value = inputs.keyword || '';
-  productSelling.value = inputs.sellingPoint || '';
-  productAudience.value = inputs.style || '';
-  productNameKey.value += 1;
-  productSellingKey.value += 1;
-  productAudienceKey.value += 1;
-  output.value = record.output || '';
-  imageUrls.value = record.imageUrls || (record.imageUrl ? [record.imageUrl] : []);
-  imageMeta.value = record.imageMeta || imageUrls.value.map((url) => ({ url }));
-  imageCount.value = record.imageCount ?? imageUrls.value.length ?? 0;
-  imageSize.value = record.imageSize || 'landscape';
-  imageSource.value = record.imageSource === 'web' ? 'web' : 'ai';
+
+  if (!poll) {
+    template.value = record.template;
+    Object.keys(inputs).forEach((k) => delete inputs[k]);
+    Object.assign(inputs, record.input || {});
+    productName.value = inputs.keyword || '';
+    productSelling.value = inputs.sellingPoint || '';
+    productAudience.value = inputs.style || '';
+    productNameKey.value += 1;
+    productSellingKey.value += 1;
+    productAudienceKey.value += 1;
+    imageCount.value = record.imageCount ?? 0;
+    imageSize.value = record.imageSize || 'landscape';
+    imageSource.value = record.imageSource === 'web' ? 'web' : 'ai';
+  }
+
+  if (!poll || record.output !== output.value) {
+    output.value = record.output || '';
+  }
+
+  const userId = userStore.user?.id || null;
+  const [cached] = applyImageUrlCacheToRecords(
+    [
+      {
+        imageUrl: record.imageUrl,
+        imageUrls: record.imageUrls || (record.imageUrl ? [record.imageUrl] : []),
+        imageMeta: record.imageMeta || [],
+        imageUrlPath: record.imageUrlPath,
+        imagePaths: record.imagePaths
+      }
+    ],
+    userId
+  );
+  const nextUrls = cached?.imageUrls || record.imageUrls || (record.imageUrl ? [record.imageUrl] : []);
+  const nextMeta = cached?.imageMeta || record.imageMeta || [];
+  const prevUrls = imageUrls.value || [];
+  const prevMeta = imageMeta.value || [];
+
+  imageUrls.value = nextUrls.map((u, i) => {
+    const prev = prevUrls[i];
+    const pa = extractUploadPath(u);
+    const pb = extractUploadPath(prev);
+    if (pa && pb && pa === pb && prev) return prev;
+    return u;
+  });
+  imageMeta.value = nextMeta.map((m, i) => {
+    const prev = prevMeta[i] || {};
+    const raw = m?.url || nextUrls[i] || '';
+    const prevUrl = prev.url || prevUrls[i] || '';
+    const pa = extractUploadPath(raw);
+    const pb = extractUploadPath(prevUrl);
+    const url = pa && pb && pa === pb && prevUrl ? prevUrl : raw;
+    return { ...(m || {}), url };
+  });
+  if (!imageMeta.value.length && imageUrls.value.length) {
+    imageMeta.value = imageUrls.value.map((url) => ({ url }));
+  }
+  if (!poll) {
+    imageCount.value = record.imageCount ?? imageUrls.value.length ?? 0;
+  }
+
   currentRecordId.value = record.id;
   taskStatus.value = record.status;
   taskError.value = record.error || '';
@@ -912,9 +959,11 @@ async function regenerateImage(idx) {
 
 function startPolling(id, options = {}) {
   stopPolling();
-  pollTimer = setInterval(async () => {
+  const tick = async () => {
+    if (pollInFlight) return;
+    pollInFlight = true;
     try {
-      const record = await loadTask(id);
+      const record = await loadTask(id, { poll: true });
       const regenDone = !(record.regeneratingIndexes || []).length;
       const taskDone = !isRunning(record.status);
       if (options.untilRegenDone) {
@@ -924,8 +973,11 @@ function startPolling(id, options = {}) {
       }
     } catch {
       stopPolling();
+    } finally {
+      pollInFlight = false;
     }
-  }, 2500);
+  };
+  pollTimer = setInterval(tick, 4000);
 }
 
 function stopPolling() {
@@ -933,6 +985,7 @@ function stopPolling() {
     clearInterval(pollTimer);
     pollTimer = null;
   }
+  pollInFlight = false;
 }
 
 onLoad((options) => {
