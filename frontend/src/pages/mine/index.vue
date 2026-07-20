@@ -12,17 +12,24 @@
     </view>
 
     <view class="menu">
-      <view v-if="userStore.isLogin" class="menu-item vip" @click="goVip">
+      <view class="menu-item vip" @click="goActivate">
         <view>
-          <text class="menu-title">会员中心</text>
-          <text class="menu-sub">试用 ¥9.9 · 月卡 ¥59.9 · 年卡 ¥299 · 永久代理 ¥499</text>
+          <text class="menu-title">激活码开通</text>
+          <text class="menu-sub">输入激活码开通或顺延会员</text>
         </view>
         <text class="arrow">›</text>
       </view>
-      <view v-if="userStore.isLogin && (userStore.user?.isAgent || userStore.user?.canIssueCodes)" class="menu-item" @click="goVip">
+      <view class="menu-item" @click="goVip">
         <view>
-          <text class="menu-title">代理卖码</text>
-          <text class="menu-sub">创建四档激活码 · 状态与开通日志</text>
+          <text class="menu-title">会员规则</text>
+          <text class="menu-sub">试用 · 月卡 · 年卡 · 永久套餐说明</text>
+        </view>
+        <text class="arrow">›</text>
+      </view>
+      <view v-if="userStore.isLogin && userStore.user?.canIssueCodes" class="menu-item" @click="goCodes">
+        <view>
+          <text class="menu-title">创建激活码</text>
+          <text class="menu-sub">生成四档激活码 · 库存与开通日志</text>
         </view>
         <text class="arrow">›</text>
       </view>
@@ -126,9 +133,23 @@ function goLogin() {
   uni.navigateTo({ url: '/pages/login/login' });
 }
 
+function goActivate() {
+  if (!userStore.checkLogin()) return;
+  uni.navigateTo({ url: '/pages/vip/activate' });
+}
+
 function goVip() {
   if (!userStore.checkLogin()) return;
   uni.navigateTo({ url: '/pages/vip/index' });
+}
+
+function goCodes() {
+  if (!userStore.checkLogin()) return;
+  if (!userStore.user?.canIssueCodes) {
+    uni.showToast({ title: '仅发码账号可进入', icon: 'none' });
+    return;
+  }
+  uni.navigateTo({ url: '/pages/vip/codes' });
 }
 
 function goLogs() {

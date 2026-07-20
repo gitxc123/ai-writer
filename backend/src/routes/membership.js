@@ -275,18 +275,18 @@ router.post('/activate', authMiddleware, async (req, res) => {
   }
 });
 
-/** 发码账号：查看库存、状态、使用日志与关联账户 */
+/** 发码账号（默认 17682160819）：查看库存、状态、使用日志与关联账户 */
 router.get('/agent/codes', authMiddleware, async (req, res) => {
   try {
     let user = await prisma.user.findUnique({ where: { id: req.userId } });
-    if (canIssueActivationCodes(user) && !user?.isAgent) {
-      user = (await ensureCodeIssuerPrivileges(user.phone)) || user;
-    }
-    if (!user?.isAgent && !canIssueActivationCodes(user)) {
+    if (!canIssueActivationCodes(user)) {
       return res.status(403).json({ code: 403, message: '仅发码账号可查看' });
     }
+    if (!user.isAgent) {
+      user = (await ensureCodeIssuerPrivileges(user.phone)) || user;
+    }
     const data = await listAgentCodes(user.id);
-    data.canCreate = canIssueActivationCodes(user) || !!user.isAgent;
+    data.canCreate = true;
     res.json({ code: 200, data });
   } catch (err) {
     console.error('[membership:agent-codes]', err);

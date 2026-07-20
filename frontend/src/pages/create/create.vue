@@ -753,7 +753,7 @@ async function addProductPhotos() {
         content: e.message || '请先开通会员后再创作',
         confirmText: '去开通',
         success: (r) => {
-          if (r.confirm) uni.navigateTo({ url: '/pages/vip/index' });
+          if (r.confirm) uni.navigateTo({ url: '/pages/vip/activate' });
         }
       });
     } else {
@@ -948,7 +948,7 @@ async function regenerateImage(idx) {
         content: e.message || '请先开通会员后再创作',
         confirmText: '去开通',
         success: (r) => {
-          if (r.confirm) uni.navigateTo({ url: '/pages/vip/index' });
+          if (r.confirm) uni.navigateTo({ url: '/pages/vip/activate' });
         }
       });
     } else {
@@ -1180,7 +1180,7 @@ async function submitTask() {
         content: e.message || '请先开通会员后再创作',
         confirmText: '去开通',
         success: (r) => {
-          if (r.confirm) uni.navigateTo({ url: '/pages/vip/index' });
+          if (r.confirm) uni.navigateTo({ url: '/pages/vip/activate' });
         }
       });
     } else {
@@ -1274,7 +1274,7 @@ async function retryTask() {
         content: e.message || '请先开通会员后再创作',
         confirmText: '去开通',
         success: (r) => {
-          if (r.confirm) uni.navigateTo({ url: '/pages/vip/index' });
+          if (r.confirm) uni.navigateTo({ url: '/pages/vip/activate' });
         }
       });
     } else {
