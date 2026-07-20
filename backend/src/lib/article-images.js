@@ -443,65 +443,85 @@ async function searchPexels(query, limit = 5) {
   const key = process.env.PEXELS_API_KEY;
   if (!key) return [];
 
-  // 政治新闻少用 Pexels（图库偏生活方式，易跑偏）
-  const params = new URLSearchParams({
-    query,
-    per_page: String(Math.max(limit, 5))
-  });
-  const res = await fetch(`${PEXELS_SEARCH}?${params}`, {
-    headers: { Authorization: key },
-    signal: AbortSignal.timeout(15000)
-  });
-  if (!res.ok) return [];
-  const data = await res.json();
-  return (data.photos || []).map((p) => ({
-    url: p.src?.large || p.src?.original,
-    source: 'pexels',
-    credit: p.photographer ? `Photo by ${p.photographer} on Pexels` : 'Pexels',
-    photographer: p.photographer || '',
-    sourceUrl: p.url || 'https://www.pexels.com',
-    width: p.width,
-    height: p.height,
-    alt: p.alt || ''
-  }));
+  try {
+    const params = new URLSearchParams({
+      query,
+      per_page: String(Math.max(limit, 5))
+    });
+    const res = await fetch(`${PEXELS_SEARCH}?${params}`, {
+      headers: { Authorization: key },
+      signal: AbortSignal.timeout(15000)
+    });
+    if (!res.ok) {
+      console.warn('[searchPexels] http', res.status, String(query).slice(0, 40));
+      return [];
+    }
+    const data = await res.json();
+    return (data.photos || []).map((p) => ({
+      url: p.src?.large || p.src?.original,
+      source: 'pexels',
+      credit: p.photographer ? `Photo by ${p.photographer} on Pexels` : 'Pexels',
+      photographer: p.photographer || '',
+      sourceUrl: p.url || 'https://www.pexels.com',
+      width: p.width,
+      height: p.height,
+      alt: p.alt || ''
+    }));
+  } catch (err) {
+    console.warn('[searchPexels]', err.message, String(query).slice(0, 40));
+    return [];
+  }
 }
 
 async function getDuckDuckGoVqd(query) {
-  const res = await fetch(`https://duckduckgo.com/?q=${encodeURIComponent(query)}`, {
-    headers: {
-      'User-Agent':
-        'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36'
-    },
-    signal: AbortSignal.timeout(15000)
-  });
-  const html = await res.text();
-  return html.match(/vqd=([\d-]+)/)?.[1] || null;
+  try {
+    const res = await fetch(`https://duckduckgo.com/?q=${encodeURIComponent(query)}`, {
+      headers: {
+        'User-Agent':
+          'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36'
+      },
+      signal: AbortSignal.timeout(15000)
+    });
+    const html = await res.text();
+    return html.match(/vqd=([\d-]+)/)?.[1] || null;
+  } catch (err) {
+    console.warn('[ddg:vqd]', err.message);
+    return null;
+  }
 }
 
 async function searchDuckDuckGoImages(query, limit = 8) {
-  const vqd = await getDuckDuckGoVqd(query);
-  if (!vqd) return [];
-  const url = `https://duckduckgo.com/i.js?l=cn-zh&o=json&q=${encodeURIComponent(query)}&vqd=${vqd}&f=,,,,,&p=1`;
-  const res = await fetch(url, {
-    headers: {
-      'User-Agent':
-        'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36',
-      Referer: 'https://duckduckgo.com/'
-    },
-    signal: AbortSignal.timeout(15000)
-  });
-  if (!res.ok) return [];
-  const data = await res.json();
-  return (data.results || []).slice(0, Math.max(limit, 8)).map((item) => ({
-    url: item.image,
-    source: 'web',
-    credit: item.source ? `来源：${item.source}` : '网络公开检索',
-    photographer: item.source || '',
-    sourceUrl: item.url || '',
-    width: item.width,
-    height: item.height,
-    alt: item.title || ''
-  }));
+  try {
+    const vqd = await getDuckDuckGoVqd(query);
+    if (!vqd) return [];
+    const url = `https://duckduckgo.com/i.js?l=cn-zh&o=json&q=${encodeURIComponent(query)}&vqd=${vqd}&f=,,,,,&p=1`;
+    const res = await fetch(url, {
+      headers: {
+        'User-Agent':
+          'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36',
+        Referer: 'https://duckduckgo.com/'
+      },
+      signal: AbortSignal.timeout(15000)
+    });
+    if (!res.ok) {
+      console.warn('[searchDuckDuckGo] http', res.status, String(query).slice(0, 40));
+      return [];
+    }
+    const data = await res.json();
+    return (data.results || []).slice(0, Math.max(limit, 8)).map((item) => ({
+      url: item.image,
+      source: 'web',
+      credit: item.source ? `来源：${item.source}` : '网络公开检索',
+      photographer: item.source || '',
+      sourceUrl: item.url || '',
+      width: item.width,
+      height: item.height,
+      alt: item.title || ''
+    }));
+  } catch (err) {
+    console.warn('[searchDuckDuckGo]', err.message, String(query).slice(0, 40));
+    return [];
+  }
 }
 
 function scorePhoto(photo, { kind, topicTokens = [], caption = '', keyword = '' } = {}) {
@@ -618,15 +638,37 @@ export async function searchWebImages(query, limit = 1, context = {}) {
     .filter(Boolean);
 
   let candidates = [];
+  let ddgOk = false;
 
   for (const q of queries) {
     const fromDdg = await searchDuckDuckGoImages(q, 12);
+    if (fromDdg.length) ddgOk = true;
     candidates.push(...fromDdg);
-    if (kind !== TOPIC_KINDS.POLITICS && !chineseSubject && !chineseNews) {
-      const fromPexels = await searchPexels(q, 6);
-      candidates.push(...fromPexels);
+
+    // 非敏感主题：每轮都补 Pexels；敏感主题仅在 DDG 整轮偏空时再补
+    const allowPexelsEarly = kind !== TOPIC_KINDS.POLITICS && !chineseSubject && !chineseNews;
+    if (allowPexelsEarly) {
+      candidates.push(...(await searchPexels(q, 6)));
     }
     if (candidates.length >= 20) break;
+  }
+
+  // DDG 全部失败或候选仍少：用 Pexels / 通用英文词兜底（新闻灾害仍优先相关过滤）
+  if (candidates.length < 4) {
+    const fallbackQueries = [safeQuery, keyword, stripHistoricalYearBias(`${keyword} photo`)]
+      .map((q) => String(q || '').trim())
+      .filter((q) => q.length >= 2);
+    for (const q of fallbackQueries) {
+      if (kind === TOPIC_KINDS.POLITICS || chineseNews) break;
+      candidates.push(...(await searchPexels(q, 8)));
+      if (candidates.length >= 12) break;
+    }
+    if (!ddgOk) {
+      console.warn('[searchWebImages] DDG empty/failed, used Pexels fallback', {
+        kind,
+        cand: candidates.length
+      });
+    }
   }
 
   if (kind === TOPIC_KINDS.POLITICS && candidates.length < 4) {

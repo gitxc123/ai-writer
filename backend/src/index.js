@@ -124,6 +124,16 @@ app.listen(port, '0.0.0.0', async () => {
   }
   console.log('Task mode: async (pending -> processing -> completed/failed)');
   try {
+    const { getMaxConcurrentTasks, getTaskQueueStats } = await import('./lib/task-queue.js');
+    console.log(
+      'Task concurrency:',
+      `max=${getMaxConcurrentTasks()}`,
+      getTaskQueueStats()
+    );
+  } catch (err) {
+    console.warn('[task-queue] stats', err.message);
+  }
+  try {
     const n = await purgeTaskLogs();
     if (n) console.log('[logger] purged task logs', n);
   } catch (err) {

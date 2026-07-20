@@ -274,6 +274,18 @@
         </view>
       </view>
 
+      <view v-if="!isProductIntro && !isStoryboard && imageCount > 0 && imageSource === 'ai'" class="field">
+        <text class="label">配图提示词（可选）</text>
+        <textarea
+          class="input area"
+          v-model="customImagePrompt"
+          maxlength="800"
+          :auto-height="true"
+          placeholder="留空则系统根据文案自动生成；填写后将严格按你的提示词生成全部配图"
+        />
+        <text class="field-tip">默认自动生成；有填写时不再改写你的提示词。</text>
+      </view>
+
       <text class="peak-hint">高峰期（如晚间）服务可能繁忙，文案或配图偶发失败属正常，失败后可在任务列表重试。</text>
       <text class="quota-hint">每日最多 {{ dailyGenerateLimit }} 次；从第 11 次起会轮流提醒精做。提交间隔至少 5 秒。</text>
       <view class="btn" :class="{ disabled: submitting }" @click="submitTask">
@@ -410,6 +422,7 @@ const imageUrls = ref([]);
 const imageMeta = ref([]);
 const imageCount = ref(1);
 const imageSource = ref('ai');
+const customImagePrompt = ref('');
 const submitting = ref(false);
 const dailyGenerateLimit = ref(30);
 const lastSubmitAt = ref(0);
@@ -825,6 +838,7 @@ async function loadTask(id, options = {}) {
     imageCount.value = record.imageCount ?? 0;
     imageSize.value = record.imageSize || 'landscape';
     imageSource.value = record.imageSource === 'web' ? 'web' : 'ai';
+    customImagePrompt.value = String(record.customImagePrompt || '').trim();
   }
 
   if (!poll || record.output !== output.value) {
@@ -1082,6 +1096,10 @@ async function submitTask() {
     imageSize: imageSize.value,
     imageSource: imageSource.value
   };
+  if (imageSource.value === 'ai') {
+    const prompt = String(customImagePrompt.value || '').trim();
+    if (prompt) options.customImagePrompt = prompt.slice(0, 800);
+  }
 
   if (isProductIntro.value) {
     syncProductInputs();

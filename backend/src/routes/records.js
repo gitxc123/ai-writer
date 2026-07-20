@@ -288,7 +288,7 @@ router.get('/:id', authMiddleware, async (req, res) => {
   [record] = await hydrateImageMeta([record]);
 
   const input = JSON.parse(record.input || '{}');
-  const { imageCount: _ic, imageSize: _is, imageSource: _src, ...formInputs } = input;
+  const { imageCount: _ic, imageSize: _is, imageSource: _src, customImagePrompt: _cip, productPhotos: _pp, ...formInputs } = input;
   let imageUrls = [];
   let imageMeta = [];
   try {
@@ -318,6 +318,7 @@ router.get('/:id', authMiddleware, async (req, res) => {
       imageCount: Number(input.imageCount) || imageUrls.length || 0,
       imageSize: input.imageSize || record.imageSize || 'landscape',
       imageSource: input.imageSource === 'web' ? 'web' : 'ai',
+      customImagePrompt: String(input.customImagePrompt || '').trim(),
       imageUrls,
       imageMeta,
       retry,

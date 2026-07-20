@@ -28,7 +28,14 @@ const router = Router();
 
 router.post('/', authMiddleware, async (req, res) => {
   try {
-    const { templateId, inputs, imageCount = 0, imageSize = 'landscape', imageSource = 'ai' } = req.body || {};
+    const {
+      templateId,
+      inputs,
+      imageCount = 0,
+      imageSize = 'landscape',
+      imageSource = 'ai',
+      customImagePrompt
+    } = req.body || {};
     if (!templateId) {
       return res.status(400).json({ code: 400, message: '缺少模板ID' });
     }
@@ -65,6 +72,14 @@ router.post('/', authMiddleware, async (req, res) => {
     const safety = checkInputsSafety(inputs || {});
     if (!safety.ok) {
       return res.status(400).json({ code: 400, message: safety.message });
+    }
+
+    const customPrompt = String(customImagePrompt || '').trim().slice(0, 800);
+    if (customPrompt) {
+      const promptSafety = checkInputsSafety({ customImagePrompt: customPrompt });
+      if (!promptSafety.ok) {
+        return res.status(400).json({ code: 400, message: promptSafety.message });
+      }
     }
 
     const template = await prisma.template.findUnique({ where: { id: templateId } });
@@ -136,7 +151,13 @@ router.post('/', authMiddleware, async (req, res) => {
           imageCount: PRODUCT_IMAGE_TARGET,
           imageSize: 'square'
         }
-      : { ...cleanInputs, imageCount: count, imageSize: size, imageSource: source };
+      : {
+          ...cleanInputs,
+          imageCount: count,
+          imageSize: size,
+          imageSource: source,
+          ...(source === 'ai' && customPrompt ? { customImagePrompt: customPrompt } : {})
+        };
 
     let promptPreview = '';
     try {

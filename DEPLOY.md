@@ -35,7 +35,8 @@
 | `AI_MODEL` | `agnes-2.0-flash` | |
 | `PUBLIC_BASE_URL` | `https://你的域名.up.railway.app` | 部署成功后填公网地址，方便配图 |
 | `AI_FALLBACK_API_KEY` | DeepSeek Key（可选） | Agnes 挂了时兜底 |
-| `PEXELS_API_KEY` | （可选） | 网络搜图更好用 |
+| `PEXELS_API_KEY` | （可选） | 网络搜图：DuckDuckGo 不足/失败时作补充 |
+| `MAX_CONCURRENT_TASKS` | `3` | 全局同时执行的创作/配图任务数，其余排队 |
 | `COMPLAINT_EMAIL` | `legal@你的域名.com` | 投诉页展示邮箱（勿用占位） |
 | `ADMIN_TOKEN` | ≥16 随机串 | 投诉下架、**代理发码**管理接口鉴权 |
 | `ENABLE_DEMO_PAY` | 不设 / `0` | 生产默认关闭演示支付；内测可设 `1` |
