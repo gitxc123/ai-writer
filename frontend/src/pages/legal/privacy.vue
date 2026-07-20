@@ -1,7 +1,7 @@
 <template>
   <view class="page">
     <text class="title">{{ PRIVACY_TITLE }}</text>
-    <text class="meta">更新日期：2026-07-17 · 模板文案，非正式法律意见</text>
+    <text class="meta">更新日期：2026-07-17</text>
     <view v-for="(sec, i) in PRIVACY_SECTIONS" :key="i" class="section">
       <text class="heading">{{ sec.heading }}</text>
       <text v-for="(p, j) in sec.paragraphs" :key="j" class="para">{{ p }}</text>
