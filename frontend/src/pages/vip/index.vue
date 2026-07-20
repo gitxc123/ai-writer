@@ -11,6 +11,22 @@
       </view>
     </view>
 
+    <view class="activate-box">
+      <text class="activate-title">激活码开通</text>
+      <text class="activate-desc">输入激活码可开通或顺延会员 {{ activationDays }} 天</text>
+      <input
+        class="activate-input"
+        v-model="activationCode"
+        placeholder="请输入激活码"
+        maxlength="32"
+        confirm-type="done"
+        @confirm="activate"
+      />
+      <view class="activate-btn" :class="{ disabled: activating }" @click="activate">
+        {{ activating ? '激活中…' : '立即激活' }}
+      </view>
+    </view>
+
     <view
       v-for="plan in plans"
       :key="plan.id"
@@ -31,22 +47,6 @@
       <text class="plan-desc">{{ plan.desc }}</text>
       <view class="features">
         <text v-for="(f, i) in plan.features" :key="i" class="feat">· {{ f }}</text>
-      </view>
-    </view>
-
-    <view class="activate-box">
-      <text class="activate-title">激活码开通</text>
-      <text class="activate-desc">输入激活码可开通或顺延会员 {{ activationDays }} 天</text>
-      <input
-        class="activate-input"
-        v-model="activationCode"
-        placeholder="请输入激活码"
-        maxlength="32"
-        confirm-type="done"
-        @confirm="activate"
-      />
-      <view class="activate-btn" :class="{ disabled: activating }" @click="activate">
-        {{ activating ? '激活中…' : '立即激活' }}
       </view>
     </view>
 
