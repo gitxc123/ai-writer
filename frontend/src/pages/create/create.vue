@@ -1276,16 +1276,45 @@ async function copyPack() {
   if (copying.value || !output.value) return;
   copying.value = true;
   try {
-    if (platformInfo.value.id === 'toutiao' || platformInfo.value.id === 'wechat') {
-      uni.showToast({ title: '正在打包配图…', icon: 'none', duration: 1200 });
-    }
     const pack = buildPlatformPack({
       templateName: template.value?.name || '',
       output: output.value,
       images: displayImages.value,
       imageBaseOrigin: backendOrigin()
     });
-    const result = await copyPlatformPack(pack);
+
+    // 先在点击同步链里锁住纯文本，避免后续打包配图的 await 丢掉手势后整段失败
+    let textSecured = false;
+    try {
+      await copyTextToClipboard(pack.text, { manualFallback: false });
+      textSecured = true;
+    } catch {
+      textSecured = false;
+    }
+
+    const wantEmbed =
+      platformInfo.value.id === 'toutiao' || platformInfo.value.id === 'wechat';
+    if (wantEmbed) {
+      uni.showToast({ title: '正在打包配图…', icon: 'none', duration: 1200 });
+    }
+
+    let result = null;
+    try {
+      result = await copyPlatformPack(pack);
+    } catch (e) {
+      if (textSecured) {
+        uni.showToast({
+          title: '已复制文案。配图请长按保存后手动上传',
+          icon: 'none',
+          duration: 2800
+        });
+        return;
+      }
+      await copyTextToClipboard(pack.text);
+      uni.showToast({ title: '请在弹出层中长按复制文案', icon: 'none', duration: 2500 });
+      return;
+    }
+
     const embedded = Number(result.embedded || 0);
     let tip;
     if (embedded > 0 && (result.mode === 'rich-embed' || result.mode === 'html-embed' || result.mode === 'rich')) {
