@@ -3,7 +3,7 @@
     <view class="form">
       <input v-model="phone" class="input" type="number" maxlength="11" placeholder="手机号" />
       <input v-model="password" class="input" password placeholder="密码（至少6位）" />
-      <input v-model="inviteCode" class="input" placeholder="邀请码（选填）" />
+      <input v-model="inviteCode" class="input" placeholder="邀请码（可不填，代理请用卖码）" />
 
       <view class="agree-row" @click="agreed = !agreed">
         <view class="checkbox" :class="{ on: agreed }">{{ agreed ? '✓' : '' }}</view>

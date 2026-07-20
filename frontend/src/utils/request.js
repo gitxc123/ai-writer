@@ -130,6 +130,9 @@ export const api = {
     request({ url: '/membership/pay', method: 'POST', data: { orderId } }),
   activateMembership: (code) =>
     request({ url: '/membership/activate', method: 'POST', data: { code } }),
+  getAgentCodes: () => request({ url: '/membership/agent/codes' }),
+  createAgentCodes: (data) =>
+    request({ url: '/membership/agent/codes', method: 'POST', data }),
   getCategories: () => request({ url: '/templates/categories' }),
   getTemplate: (id) => request({ url: `/templates/${id}` }),
   generate: (templateId, inputs, options = {}) =>

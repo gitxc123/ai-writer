@@ -52,6 +52,13 @@ export async function deleteUserAccount(userId) {
   await prisma.agentCommission.deleteMany({
     where: { OR: [{ agentId: userId }, { fromUserId: userId }] }
   });
+  try {
+    await prisma.activationRedeem.deleteMany({ where: { userId } });
+    await prisma.activationRedeem.deleteMany({ where: { agentId: userId } });
+    await prisma.activationCode.deleteMany({ where: { agentId: userId } });
+  } catch (err) {
+    console.warn('[account] activation cleanup', err.message);
+  }
 
   await prisma.user.delete({ where: { id: userId } });
 

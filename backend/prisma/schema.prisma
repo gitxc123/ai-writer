@@ -24,6 +24,8 @@ model User {
   records        GenerationRecord[]
   orders         MembershipOrder[]
   commissions    AgentCommission[] @relation("AgentCommissions")
+  activationCodes ActivationCode[] @relation("AgentCodes")
+  activationRedeems ActivationRedeem[] @relation("UserRedeems")
 }
 
 model MembershipOrder {
@@ -49,6 +51,42 @@ model AgentCommission {
   amount      Float
   status      String   @default("settled")
   createdAt   DateTime @default(now())
+}
+
+/** 代理卖码：运营发给代理，用户兑换开通；按码记账 */
+model ActivationCode {
+  id        String   @id @default(cuid())
+  code      String   @unique
+  agentId   String?
+  agent     User?    @relation("AgentCodes", fields: [agentId], references: [id])
+  planId    String   @default("trial")
+  days      Int      @default(3)
+  maxUses   Int      @default(1)
+  usedCount Int      @default(0)
+  note      String   @default("")
+  disabled  Boolean  @default(false)
+  createdAt DateTime @default(now())
+  redeems   ActivationRedeem[]
+
+  @@index([agentId, createdAt])
+}
+
+model ActivationRedeem {
+  id        String   @id @default(cuid())
+  codeId    String
+  codeRef   ActivationCode @relation(fields: [codeId], references: [id])
+  code      String
+  agentId   String?
+  userId    String
+  user      User     @relation("UserRedeems", fields: [userId], references: [id])
+  days      Int
+  planId    String   @default("")
+  phoneMask String   @default("")
+  createdAt DateTime @default(now())
+
+  @@index([agentId, createdAt])
+  @@index([userId, createdAt])
+  @@index([code])
 }
 
 model TemplateCategory {

@@ -1,7 +1,7 @@
 <template>
   <view class="page">
     <text class="title">{{ TERMS_TITLE }}</text>
-    <text class="meta">更新日期：2026-07-17</text>
+    <text class="meta">更新日期：2026-07-20</text>
     <view v-for="(sec, i) in TERMS_SECTIONS" :key="i" class="section">
       <text class="heading">{{ sec.heading }}</text>
       <text v-for="(p, j) in sec.paragraphs" :key="j" class="para">{{ p }}</text>

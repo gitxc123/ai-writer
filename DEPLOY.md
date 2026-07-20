@@ -37,11 +37,28 @@
 | `AI_FALLBACK_API_KEY` | DeepSeek Key（可选） | Agnes 挂了时兜底 |
 | `PEXELS_API_KEY` | （可选） | 网络搜图更好用 |
 | `COMPLAINT_EMAIL` | `legal@你的域名.com` | 投诉页展示邮箱（勿用占位） |
-| `ADMIN_TOKEN` | ≥16 随机串 | 投诉下架管理接口鉴权 |
+| `ADMIN_TOKEN` | ≥16 随机串 | 投诉下架、**代理发码**管理接口鉴权 |
 | `ENABLE_DEMO_PAY` | 不设 / `0` | 生产默认关闭演示支付；内测可设 `1` |
 | `DAILY_GENERATE_LIMIT` | `30` | 每用户每日新建任务硬上限（未满不拦截，仅提醒精做） |
 | `GENERATE_SUBMIT_COOLDOWN_MS` | `5000` | 同一用户两次提交最短间隔（毫秒） |
 | `STRICT_SECURITY` | `1`（可选） | 为 1 时缺投诉邮箱/ADMIN_TOKEN 则拒绝启动 |
+
+### 代理卖码（运营发码）
+
+给已注册代理手机号批量发激活码（单次兑换天数、可用次数可配）：
+
+```bash
+curl -X POST "https://你的域名/api/membership/admin/codes" ^
+  -H "Content-Type: application/json" ^
+  -H "x-admin-token: 你的ADMIN_TOKEN" ^
+  -d "{\"agentPhone\":\"13800138000\",\"count\":10,\"days\":30,\"maxUses\":1,\"note\":\"张三代发\"}"
+```
+
+返回的 `codes` 发给代理即可。用户在会员中心兑换；代理可在会员中心查看库存与开通记录。万能码 `admin666666` 仍可用（不限次、每次 3 天）。
+
+发码白名单账号（默认含 `17682160819`）登录会员中心可自助创建四档激活码，并查看状态、使用日志与关联账户。可用环境变量扩展：
+
+`CODE_ISSUER_PHONES=17682160819,另一手机号`
 
 以下一般 **不用改**（Dockerfile 已设）：
 

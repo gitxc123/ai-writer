@@ -40,4 +40,10 @@ describe('activation code', () => {
     assert.equal(r.status, 400);
     assert.match(r.error, /永久/);
   });
+
+  it('supports lifetime grant when days is 0', () => {
+    const r = resolveActivationExpiry({ memberPlan: 'none' }, 0, new Date());
+    assert.equal(r.lifetime, true);
+    assert.equal(r.expireAt, null);
+  });
 });

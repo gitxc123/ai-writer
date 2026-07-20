@@ -19,10 +19,10 @@
         </view>
         <text class="arrow">›</text>
       </view>
-      <view v-if="userStore.isLogin && userStore.user?.isAgent" class="menu-item" @click="goVip">
+      <view v-if="userStore.isLogin && (userStore.user?.isAgent || userStore.user?.canIssueCodes)" class="menu-item" @click="goVip">
         <view>
-          <text class="menu-title">代理收益</text>
-          <text class="menu-sub">邀请码 {{ userStore.user.inviteCode }} · 分成 50%</text>
+          <text class="menu-title">代理卖码</text>
+          <text class="menu-sub">创建四档激活码 · 状态与开通日志</text>
         </view>
         <text class="arrow">›</text>
       </view>

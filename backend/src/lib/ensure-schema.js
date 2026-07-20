@@ -64,7 +64,40 @@ const MIGRATIONS = [
   'CREATE INDEX IF NOT EXISTS TaskLog_createdAt_idx ON TaskLog(createdAt)',
   'CREATE INDEX IF NOT EXISTS TaskLog_taskId_createdAt_idx ON TaskLog(taskId, createdAt)',
   'ALTER TABLE User ADD COLUMN termsAcceptedAt DATETIME',
-  'ALTER TABLE User ADD COLUMN ageConfirmedAt DATETIME'
+  'ALTER TABLE User ADD COLUMN ageConfirmedAt DATETIME',
+  `CREATE TABLE IF NOT EXISTS ActivationCode (
+    id TEXT PRIMARY KEY NOT NULL,
+    code TEXT NOT NULL,
+    agentId TEXT,
+    planId TEXT NOT NULL DEFAULT 'trial',
+    days INTEGER NOT NULL DEFAULT 3,
+    maxUses INTEGER NOT NULL DEFAULT 1,
+    usedCount INTEGER NOT NULL DEFAULT 0,
+    note TEXT NOT NULL DEFAULT '',
+    disabled INTEGER NOT NULL DEFAULT 0,
+    createdAt DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
+    FOREIGN KEY (agentId) REFERENCES User(id)
+  )`,
+  'CREATE UNIQUE INDEX IF NOT EXISTS ActivationCode_code_key ON ActivationCode(code)',
+  'CREATE INDEX IF NOT EXISTS ActivationCode_agentId_createdAt_idx ON ActivationCode(agentId, createdAt)',
+  'ALTER TABLE ActivationCode ADD COLUMN planId TEXT DEFAULT "trial"',
+  `CREATE TABLE IF NOT EXISTS ActivationRedeem (
+    id TEXT PRIMARY KEY NOT NULL,
+    codeId TEXT NOT NULL,
+    code TEXT NOT NULL,
+    agentId TEXT,
+    userId TEXT NOT NULL,
+    days INTEGER NOT NULL,
+    planId TEXT NOT NULL DEFAULT '',
+    phoneMask TEXT NOT NULL DEFAULT '',
+    createdAt DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
+    FOREIGN KEY (codeId) REFERENCES ActivationCode(id),
+    FOREIGN KEY (userId) REFERENCES User(id)
+  )`,
+  'CREATE INDEX IF NOT EXISTS ActivationRedeem_agentId_createdAt_idx ON ActivationRedeem(agentId, createdAt)',
+  'CREATE INDEX IF NOT EXISTS ActivationRedeem_userId_createdAt_idx ON ActivationRedeem(userId, createdAt)',
+  'CREATE INDEX IF NOT EXISTS ActivationRedeem_code_idx ON ActivationRedeem(code)',
+  'ALTER TABLE ActivationRedeem ADD COLUMN planId TEXT DEFAULT ""'
 ];
 
 export async function ensureSchema() {

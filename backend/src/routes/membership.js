@@ -8,13 +8,32 @@ import {
   isMemberActive,
   formatMemberLabel,
   genInviteCode,
-  isValidMasterActivationCode,
-  resolveActivationExpiry,
-  ACTIVATION_CODE_DAYS
+  ACTIVATION_CODE_DAYS,
+  canIssueActivationCodes,
+  CODE_PLAN_PRESETS
 } from '../lib/membership.js';
 import { isDemoPayEnabled, getDailyGenerateLimit } from '../lib/security-config.js';
+import {
+  createActivationCodes,
+  redeemActivationCode,
+  listAgentCodes,
+  ensureCodeIssuerPrivileges
+} from '../lib/activation-codes.js';
 
 const router = Router();
+
+function requireAdmin(req, res, next) {
+  const token = process.env.ADMIN_TOKEN || '';
+  if (!token) {
+    return res.status(503).json({ code: 503, message: '未配置 ADMIN_TOKEN' });
+  }
+  const header =
+    req.headers['x-admin-token'] || req.headers.authorization?.replace(/^Bearer\s+/i, '');
+  if (header !== token) {
+    return res.status(401).json({ code: 401, message: '无权限' });
+  }
+  return next();
+}
 
 function publicUser(user) {
   if (!user) return null;
@@ -27,6 +46,7 @@ function publicUser(user) {
     isMember: isMemberActive(user),
     memberLabel: formatMemberLabel(user),
     isAgent: !!user.isAgent,
+    canIssueCodes: canIssueActivationCodes(user),
     agentRate: user.isAgent ? Number(user.agentRate || 0.5) : 0,
     inviteCode: user.inviteCode || '',
     createdAt: user.createdAt
@@ -39,7 +59,8 @@ router.get('/config', (_req, res) => {
     data: {
       demoPayEnabled: isDemoPayEnabled(),
       dailyGenerateLimit: getDailyGenerateLimit(),
-      activationCodeDays: ACTIVATION_CODE_DAYS
+      activationCodeDays: ACTIVATION_CODE_DAYS,
+      codePlans: CODE_PLAN_PRESETS
     }
   });
 });
@@ -49,8 +70,12 @@ router.get('/plans', (_req, res) => {
 });
 
 router.get('/me', authMiddleware, async (req, res) => {
-  const user = await prisma.user.findUnique({ where: { id: req.userId } });
+  await ensureCodeIssuerPrivileges('17682160819').catch(() => null);
+  let user = await prisma.user.findUnique({ where: { id: req.userId } });
   if (!user) return res.status(404).json({ code: 404, message: '用户不存在' });
+  if (canIssueActivationCodes(user) && !user.isAgent) {
+    user = (await ensureCodeIssuerPrivileges(user.phone)) || user;
+  }
 
   let commissionSummary = null;
   if (user.isAgent) {
@@ -210,45 +235,164 @@ router.post('/pay', authMiddleware, async (req, res) => {
   }
 });
 
-/** 激活码开通会员（万能码可反复使用，单次顺延 ACTIVATION_CODE_DAYS 天） */
+/** 激活码开通会员：万能码不限次；库存码按次核销并记账 */
 router.post('/activate', authMiddleware, async (req, res) => {
   try {
     const { code } = req.body || {};
-    if (!code || !String(code).trim()) {
-      return res.status(400).json({ code: 400, message: '请输入激活码' });
-    }
-    if (!isValidMasterActivationCode(code)) {
-      return res.status(400).json({ code: 400, message: '激活码无效' });
-    }
-
     const user = await prisma.user.findUnique({ where: { id: req.userId } });
     if (!user) return res.status(404).json({ code: 404, message: '用户不存在' });
 
-    const resolved = resolveActivationExpiry(user);
-    if (resolved.error) {
-      return res.status(resolved.status || 400).json({ code: resolved.status || 400, message: resolved.error });
-    }
+    const redeemed = await redeemActivationCode(user, code);
+    const updateData = redeemed.lifetime
+      ? { memberPlan: 'lifetime', memberExpireAt: null }
+      : {
+          memberPlan: redeemed.planId && redeemed.planId !== 'code' ? redeemed.planId : 'code',
+          memberExpireAt: redeemed.expireAt
+        };
 
     const fresh = await prisma.user.update({
       where: { id: req.userId },
-      data: {
-        memberPlan: 'code',
-        memberExpireAt: resolved.expireAt
-      }
+      data: updateData
     });
 
     res.json({
       code: 200,
       data: {
-        message: `激活成功，会员已顺延 ${ACTIVATION_CODE_DAYS} 天`,
-        days: ACTIVATION_CODE_DAYS,
+        message: redeemed.lifetime
+          ? '激活成功，已开通永久会员'
+          : `激活成功，会员已顺延 ${redeemed.days} 天`,
+        days: redeemed.days,
+        planId: redeemed.planId,
         memberExpireAt: fresh.memberExpireAt,
+        source: redeemed.source,
         user: publicUser(fresh)
       }
     });
   } catch (err) {
     console.error('[membership:activate]', err);
-    res.status(500).json({ code: 500, message: err.message || '激活失败' });
+    const status = err.status || 500;
+    res.status(status).json({ code: status, message: err.message || '激活失败' });
+  }
+});
+
+/** 发码账号：查看库存、状态、使用日志与关联账户 */
+router.get('/agent/codes', authMiddleware, async (req, res) => {
+  try {
+    let user = await prisma.user.findUnique({ where: { id: req.userId } });
+    if (canIssueActivationCodes(user) && !user?.isAgent) {
+      user = (await ensureCodeIssuerPrivileges(user.phone)) || user;
+    }
+    if (!user?.isAgent && !canIssueActivationCodes(user)) {
+      return res.status(403).json({ code: 403, message: '仅发码账号可查看' });
+    }
+    const data = await listAgentCodes(user.id);
+    data.canCreate = canIssueActivationCodes(user) || !!user.isAgent;
+    res.json({ code: 200, data });
+  } catch (err) {
+    console.error('[membership:agent-codes]', err);
+    res.status(500).json({ code: 500, message: err.message || '读取失败' });
+  }
+});
+
+/**
+ * 发码账号自助创建四档会员激活码
+ * body: { planId, count?, maxUses?, note? }
+ */
+router.post('/agent/codes', authMiddleware, async (req, res) => {
+  try {
+    let user = await prisma.user.findUnique({ where: { id: req.userId } });
+    if (!user) return res.status(404).json({ code: 404, message: '用户不存在' });
+    if (!canIssueActivationCodes(user)) {
+      return res.status(403).json({ code: 403, message: '当前账号无权创建激活码' });
+    }
+    if (!user.isAgent) {
+      user = (await ensureCodeIssuerPrivileges(user.phone)) || user;
+    }
+
+    const { planId, count, maxUses, note } = req.body || {};
+    const created = await createActivationCodes({
+      agentId: user.id,
+      planId,
+      count,
+      maxUses,
+      note
+    });
+
+    res.json({
+      code: 200,
+      data: {
+        codes: created.map((c) => ({
+          code: c.code,
+          planId: c.planId,
+          days: c.days,
+          maxUses: c.maxUses,
+          note: c.note
+        }))
+      }
+    });
+  } catch (err) {
+    console.error('[membership:agent-create-codes]', err);
+    res.status(500).json({ code: 500, message: err.message || '创建失败' });
+  }
+});
+
+/**
+ * 运营发码给代理（需 ADMIN_TOKEN）
+ * body: { agentPhone, planId?, count?, days?, maxUses?, note? }
+ */
+router.post('/admin/codes', requireAdmin, async (req, res) => {
+  try {
+    const { agentPhone, agentId, count, days, maxUses, note, planId } = req.body || {};
+    let agent = null;
+    if (agentId) {
+      agent = await prisma.user.findUnique({ where: { id: String(agentId) } });
+    } else if (agentPhone) {
+      agent = await prisma.user.findUnique({ where: { phone: String(agentPhone).trim() } });
+    }
+    if (!agent) {
+      return res.status(404).json({ code: 404, message: '未找到代理用户，请先确认手机号已注册' });
+    }
+    if (!agent.isAgent) {
+      const inviteCode = agent.inviteCode || genInviteCode();
+      agent = await prisma.user.update({
+        where: { id: agent.id },
+        data: {
+          isAgent: true,
+          agentRate: agent.agentRate > 0 ? agent.agentRate : 0.5,
+          inviteCode
+        }
+      });
+    }
+
+    const created = await createActivationCodes({
+      agentId: agent.id,
+      planId,
+      count,
+      days,
+      maxUses,
+      note
+    });
+
+    res.json({
+      code: 200,
+      data: {
+        agent: {
+          id: agent.id,
+          phone: agent.phone,
+          nickName: agent.nickName
+        },
+        codes: created.map((c) => ({
+          code: c.code,
+          planId: c.planId,
+          days: c.days,
+          maxUses: c.maxUses,
+          note: c.note
+        }))
+      }
+    });
+  } catch (err) {
+    console.error('[membership:admin-codes]', err);
+    res.status(500).json({ code: 500, message: err.message || '发码失败' });
   }
 });
 
