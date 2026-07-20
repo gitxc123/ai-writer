@@ -275,19 +275,27 @@
       </view>
 
       <view v-if="!isProductIntro && !isStoryboard && imageCount > 0 && imageSource === 'ai'" class="field">
-        <text class="label">配图提示词（可选）</text>
-        <textarea
-          class="input area"
-          v-model="customImagePrompt"
-          maxlength="800"
-          :auto-height="true"
-          placeholder="留空则系统根据文案自动生成；填写后将严格按你的提示词生成全部配图"
-        />
-        <text class="field-tip">默认自动生成；有填写时不再改写你的提示词。</text>
+        <text class="label">配图提示词（可选，每张独立）</text>
+        <view
+          v-for="(_, idx) in customImagePrompts"
+          :key="'prompt-' + idx"
+          class="prompt-slot"
+        >
+          <text class="prompt-slot-label">配图 {{ idx + 1 }}</text>
+          <textarea
+            class="input area"
+            :value="customImagePrompts[idx]"
+            maxlength="800"
+            :auto-height="true"
+            :placeholder="`留空则第 ${idx + 1} 张由系统自动生成；填写后严格按此提示词`"
+            @input="onCustomPromptInput(idx, $event)"
+          />
+        </view>
+        <text class="field-tip">每张可单独填写；留空的仍自动生成，有填写的不再改写。</text>
       </view>
 
       <text class="peak-hint">高峰期（如晚间）服务可能繁忙，文案或配图偶发失败属正常，失败后可在任务列表重试。</text>
-      <text class="quota-hint">每日最多 {{ dailyGenerateLimit }} 次；从第 11 次起会轮流提醒精做。提交间隔至少 5 秒。</text>
+      <text class="quota-hint">每日最多 {{ dailyGenerateLimit }} 次创作。</text>
       <view class="btn" :class="{ disabled: submitting }" @click="submitTask">
         {{ submitting ? '提交中...' : submitLabel }}
       </view>
@@ -397,7 +405,7 @@
 </template>
 
 <script setup>
-import { ref, reactive, computed, onMounted, onUnmounted } from 'vue';
+import { ref, reactive, computed, watch, onMounted, onUnmounted } from 'vue';
 import { onLoad } from '@dcloudio/uni-app';
 import { api, uploadProductPhoto } from '../../utils/request.js';
 import { useUserStore } from '../../stores/user.js';
@@ -422,8 +430,30 @@ const imageUrls = ref([]);
 const imageMeta = ref([]);
 const imageCount = ref(1);
 const imageSource = ref('ai');
-const customImagePrompt = ref('');
+const customImagePrompts = ref(['']);
 const submitting = ref(false);
+
+function resizeCustomImagePrompts(count) {
+  const n = Math.min(5, Math.max(0, Number(count) || 0));
+  const prev = customImagePrompts.value || [];
+  if (n <= 0) {
+    customImagePrompts.value = [];
+    return;
+  }
+  const next = prev.slice(0, n);
+  while (next.length < n) next.push('');
+  customImagePrompts.value = next;
+}
+
+function onCustomPromptInput(idx, event) {
+  const val = String(eventValue(event) || '').slice(0, 800);
+  const next = [...(customImagePrompts.value || [])];
+  if (idx < 0 || idx >= next.length) return;
+  next[idx] = val;
+  customImagePrompts.value = next;
+}
+
+watch(imageCount, (n) => resizeCustomImagePrompts(n), { immediate: true });
 const dailyGenerateLimit = ref(30);
 const lastSubmitAt = ref(0);
 const SUBMIT_COOLDOWN_MS = 5000;
@@ -567,7 +597,8 @@ const exportPackPreview = computed(() =>
   buildPlatformPack({
     templateName: template.value?.name || '',
     output: output.value || '',
-    images: displayImages.value
+    images: displayImages.value,
+    imageBaseOrigin: backendOrigin()
   })
 );
 
@@ -838,7 +869,20 @@ async function loadTask(id, options = {}) {
     imageCount.value = record.imageCount ?? 0;
     imageSize.value = record.imageSize || 'landscape';
     imageSource.value = record.imageSource === 'web' ? 'web' : 'ai';
-    customImagePrompt.value = String(record.customImagePrompt || '').trim();
+    const n = Math.min(5, Math.max(0, Number(imageCount.value) || 0));
+    const fromArr = Array.isArray(record.customImagePrompts)
+      ? record.customImagePrompts.map((p) => String(p || '').trim().slice(0, 800))
+      : null;
+    const legacy = String(record.customImagePrompt || '').trim().slice(0, 800);
+    if (fromArr && fromArr.length) {
+      const next = fromArr.slice(0, n);
+      while (next.length < n) next.push('');
+      customImagePrompts.value = next;
+    } else if (legacy && n > 0) {
+      customImagePrompts.value = Array.from({ length: n }, () => legacy);
+    } else {
+      resizeCustomImagePrompts(n);
+    }
   }
 
   if (!poll || record.output !== output.value) {
@@ -1096,9 +1140,12 @@ async function submitTask() {
     imageSize: imageSize.value,
     imageSource: imageSource.value
   };
-  if (imageSource.value === 'ai') {
-    const prompt = String(customImagePrompt.value || '').trim();
-    if (prompt) options.customImagePrompt = prompt.slice(0, 800);
+  if (imageSource.value === 'ai' && imageCount.value > 0) {
+    const prompts = (customImagePrompts.value || [])
+      .slice(0, imageCount.value)
+      .map((p) => String(p || '').trim().slice(0, 800));
+    while (prompts.length < imageCount.value) prompts.push('');
+    if (prompts.some(Boolean)) options.customImagePrompts = prompts;
   }
 
   if (isProductIntro.value) {
@@ -1213,20 +1260,32 @@ async function copyPack() {
   if (copying.value || !output.value) return;
   copying.value = true;
   try {
+    if (platformInfo.value.id === 'toutiao' || platformInfo.value.id === 'wechat') {
+      uni.showToast({ title: '正在打包配图…', icon: 'none', duration: 1200 });
+    }
     const pack = buildPlatformPack({
       templateName: template.value?.name || '',
       output: output.value,
-      images: displayImages.value
+      images: displayImages.value,
+      imageBaseOrigin: backendOrigin()
     });
     const result = await copyPlatformPack(pack);
-    let tip =
-      result.mode === 'rich' || result.mode === 'html'
-        ? `已复制${pack.platform.name}图文（含图片链接），可直接粘贴`
-        : `已复制文本（含图片链接），粘贴到${pack.platform.name}`;
-    if (pack.platform.id === 'toutiao' && pack.title) {
-      tip = `已复制图文链接。标题${charLen(pack.title)}/30字，也可单独点「复制标题」`;
+    const embedded = Number(result.embedded || 0);
+    let tip;
+    if (embedded > 0 && (result.mode === 'rich-embed' || result.mode === 'html-embed' || result.mode === 'rich')) {
+      tip =
+        pack.platform.id === 'toutiao'
+          ? `已复制图文（${embedded}张图已内嵌）。粘贴到头条编辑器即可显示`
+          : `已复制${pack.platform.name}图文（${embedded}张图已内嵌），可直接粘贴`;
+    } else if (result.mode === 'rich' || result.mode === 'html') {
+      tip = `已复制${pack.platform.name}图文。若平台只显示链接，请右键保存配图后手动上传`;
+    } else {
+      tip = `已复制文本。${pack.platform.name}建议用富文本粘贴，或手动上传配图`;
     }
-    uni.showToast({ title: tip, icon: 'none', duration: 2800 });
+    if (pack.platform.id === 'toutiao' && pack.title && embedded > 0) {
+      tip = `已内嵌${embedded}张图。标题${charLen(pack.title)}/30字，粘贴到头条编辑器`;
+    }
+    uni.showToast({ title: tip, icon: 'none', duration: 3200 });
   } catch (e) {
     uni.showToast({ title: e.message || '复制失败', icon: 'none' });
   } finally {
@@ -1833,6 +1892,15 @@ function goTasks() {
   color: #909399;
   line-height: 1.5;
   margin: 8rpx 0 16rpx;
+}
+.prompt-slot {
+  margin-bottom: 16rpx;
+}
+.prompt-slot-label {
+  display: block;
+  font-size: 24rpx;
+  color: #606266;
+  margin-bottom: 8rpx;
 }
 .slot-row {
   display: flex;

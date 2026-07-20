@@ -34,7 +34,8 @@ router.post('/', authMiddleware, async (req, res) => {
       imageCount = 0,
       imageSize = 'landscape',
       imageSource = 'ai',
-      customImagePrompt
+      customImagePrompt,
+      customImagePrompts
     } = req.body || {};
     if (!templateId) {
       return res.status(400).json({ code: 400, message: '缺少模板ID' });
@@ -74,14 +75,6 @@ router.post('/', authMiddleware, async (req, res) => {
       return res.status(400).json({ code: 400, message: safety.message });
     }
 
-    const customPrompt = String(customImagePrompt || '').trim().slice(0, 800);
-    if (customPrompt) {
-      const promptSafety = checkInputsSafety({ customImagePrompt: customPrompt });
-      if (!promptSafety.ok) {
-        return res.status(400).json({ code: 400, message: promptSafety.message });
-      }
-    }
-
     const template = await prisma.template.findUnique({ where: { id: templateId } });
     if (!template) {
       return res.status(404).json({ code: 404, message: '模板不存在' });
@@ -91,6 +84,26 @@ router.post('/', authMiddleware, async (req, res) => {
       ? 0
       : Math.min(5, Math.max(0, Number(imageCount) || 0));
     const size = imageSize || 'landscape';
+
+    const promptList = [];
+    if (Array.isArray(customImagePrompts)) {
+      for (let i = 0; i < count; i += 1) {
+        promptList.push(String(customImagePrompts[i] || '').trim().slice(0, 800));
+      }
+    } else {
+      const legacy = String(customImagePrompt || '').trim().slice(0, 800);
+      if (legacy && count > 0) {
+        for (let i = 0; i < count; i += 1) promptList.push(legacy);
+      }
+    }
+    for (const p of promptList) {
+      if (!p) continue;
+      const promptSafety = checkInputsSafety({ customImagePrompt: p });
+      if (!promptSafety.ok) {
+        return res.status(400).json({ code: 400, message: promptSafety.message });
+      }
+    }
+    const hasAnyCustomPrompt = promptList.some(Boolean);
 
     if (isProductIntroTemplate(template.name)) {
       return res.status(503).json({
@@ -156,7 +169,7 @@ router.post('/', authMiddleware, async (req, res) => {
           imageCount: count,
           imageSize: size,
           imageSource: source,
-          ...(source === 'ai' && customPrompt ? { customImagePrompt: customPrompt } : {})
+          ...(source === 'ai' && hasAnyCustomPrompt ? { customImagePrompts: promptList } : {})
         };
 
     let promptPreview = '';

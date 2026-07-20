@@ -1,7 +1,11 @@
 import { describe, it } from 'node:test';
 import assert from 'node:assert/strict';
 import { charLen, clampToutiaoTitle, TOUTIAO_TITLE_MAX } from '../src/utils/platformLimits.js';
-import { buildPlatformPack, safeExportImageUrl } from '../src/utils/platformExport.js';
+import {
+  buildPlatformPack,
+  safeExportImageUrl,
+  absolutizeExportImageUrl
+} from '../src/utils/platformExport.js';
 
 describe('platformLimits', () => {
   it('clamps toutiao title to 30 chars', () => {
@@ -32,10 +36,17 @@ describe('safeExportImageUrl', () => {
       '/uploads/a.webp?e=123&s=abc'
     );
   });
+
+  it('absolutizes /uploads with base origin', () => {
+    assert.equal(
+      absolutizeExportImageUrl('/uploads/a.webp?e=1', 'https://app.example.com'),
+      'https://app.example.com/uploads/a.webp?e=1'
+    );
+  });
 });
 
-describe('buildPlatformPack image link mode', () => {
-  it('embeds public image urls for toutiao', () => {
+describe('buildPlatformPack image embed mode', () => {
+  it('embeds public image urls for toutiao and omits bare urls from plain text', () => {
     const pack = buildPlatformPack({
       templateName: '今日头条创作',
       output:
@@ -46,13 +57,17 @@ describe('buildPlatformPack image link mode', () => {
           remoteUrl: 'https://cdn.example.com/a.jpg',
           caption: '小鹏MONA首发'
         }
-      ]
+      ],
+      imageBaseOrigin: 'https://app.example.com'
     });
 
     assert.ok(charLen(pack.title) <= 30);
-    assert.ok(pack.html.includes('https://cdn.example.com/a.jpg'));
+    assert.ok(pack.html.includes('https://app.example.com/uploads/local.jpg'));
     assert.ok(pack.html.includes('<img'));
-    assert.ok(pack.text.includes('https://cdn.example.com/a.jpg'));
+    assert.equal(pack.preferEmbedImages, true);
+    // 纯文本不带裸链，避免头条优先粘贴成「只有链接」
+    assert.equal(pack.text.includes('https://'), false);
+    assert.ok(pack.text.includes('[图片1'));
   });
 
   it('skips javascript image urls', () => {
@@ -74,5 +89,6 @@ describe('buildPlatformPack image link mode', () => {
     });
     assert.match(pack.text, /AI 辅助生成/);
     assert.match(pack.text, /非现场实拍|AI 生成/);
+    assert.ok(pack.text.includes('https://cdn.example.com/a.jpg'));
   });
 });

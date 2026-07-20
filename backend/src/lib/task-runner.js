@@ -169,14 +169,35 @@ function parseInput(task) {
     imageSource: _src,
     productPhotos: _pp,
     customImagePrompt: _cip,
+    customImagePrompts: _cips,
     ...inputs
   } = raw;
   const imageCount = Math.min(5, Math.max(0, Number(raw.imageCount) || 0));
   const imageSize = raw.imageSize || task.imageSize || 'landscape';
   let imageSource = raw.imageSource === 'web' ? 'web' : 'ai';
   if (raw.imageSource === 'product') imageSource = 'product';
-  const customImagePrompt = String(raw.customImagePrompt || '').trim().slice(0, 800);
-  return { inputs, imageCount, imageSize, imageSource, productPhotos, customImagePrompt };
+
+  const customImagePrompts = [];
+  if (Array.isArray(raw.customImagePrompts)) {
+    for (let i = 0; i < imageCount; i += 1) {
+      customImagePrompts.push(String(raw.customImagePrompts[i] || '').trim().slice(0, 800));
+    }
+  } else {
+    const legacy = String(raw.customImagePrompt || '').trim().slice(0, 800);
+    if (legacy && imageCount > 0) {
+      for (let i = 0; i < imageCount; i += 1) customImagePrompts.push(legacy);
+    } else {
+      for (let i = 0; i < imageCount; i += 1) customImagePrompts.push('');
+    }
+  }
+  while (customImagePrompts.length < imageCount) customImagePrompts.push('');
+
+  return { inputs, imageCount, imageSize, imageSource, productPhotos, customImagePrompts };
+}
+
+function customPromptAt(prompts, index) {
+  const p = Array.isArray(prompts) ? prompts[index] : '';
+  return String(p || '').trim();
 }
 
 async function saveImages(taskId, imageUrls, imageMeta) {
@@ -224,7 +245,7 @@ async function runGenerationTaskBody(taskId) {
     return;
   }
 
-  const { inputs, imageCount, imageSize, imageSource, productPhotos, customImagePrompt } = parseInput(task);
+  const { inputs, imageCount, imageSize, imageSource, productPhotos, customImagePrompts } = parseInput(task);
   let keyword = inputs.keyword || inputs.theme || Object.values(inputs)[0] || '';
   const style = inputs.style || task.template.name;
   let output = '';
@@ -621,9 +642,13 @@ async function runGenerationTaskBody(taskId) {
     return;
   }
 
-  const useCustomAiPrompt = imageSource === 'ai' && Boolean(customImagePrompt);
+  const allCustomAi =
+    imageSource === 'ai' &&
+    imageCount > 0 &&
+    customImagePrompts.length >= imageCount &&
+    customImagePrompts.slice(0, imageCount).every((p) => Boolean(String(p || '').trim()));
   let plans = [];
-  if (!useCustomAiPrompt) {
+  if (!(imageSource === 'ai' && allCustomAi)) {
     plans = await withTimeout(
       planArticleImages({
         output,
@@ -638,17 +663,18 @@ async function runGenerationTaskBody(taskId) {
 
   for (let i = startAt; i < imageCount; i += 1) {
     const plan = plans[i] || plans[plans.length - 1] || {};
+    const slotCustomPrompt = imageSource === 'ai' ? customPromptAt(customImagePrompts, i) : '';
     console.log(
       '[task:generation] image',
       i + 1,
       '/',
       imageCount,
       imageSource,
-      useCustomAiPrompt ? '(custom prompt)' : plan?.searchQuery
+      slotCustomPrompt ? '(custom prompt)' : plan?.searchQuery
     );
     await logTask(taskId, 'info', `image ${i + 1}/${imageCount} ${imageSource}`, {
-      searchQuery: useCustomAiPrompt ? undefined : plan?.searchQuery || undefined,
-      customPrompt: useCustomAiPrompt || undefined
+      searchQuery: slotCustomPrompt ? undefined : plan?.searchQuery || undefined,
+      customPrompt: Boolean(slotCustomPrompt) || undefined
     });
 
     if (imageSource === 'web') {
@@ -682,8 +708,8 @@ async function runGenerationTaskBody(taskId) {
         sourceUrl: hit.sourceUrl || ''
       });
     } else {
-      const scenePrompt = useCustomAiPrompt
-        ? customImagePrompt
+      const scenePrompt = slotCustomPrompt
+        ? slotCustomPrompt
         : buildImagePromptVariant({
             keyword,
             style,
@@ -703,11 +729,11 @@ async function runGenerationTaskBody(taskId) {
       imageMeta.push({
         url: storedUrl,
         remoteUrl: storedUrl === imageUrl ? undefined : imageUrl,
-        caption: useCustomAiPrompt ? `配图 ${i + 1}` : plan.caption,
-        query: useCustomAiPrompt ? customImagePrompt.slice(0, 120) : plan.searchQuery,
+        caption: slotCustomPrompt ? `配图 ${i + 1}` : plan.caption,
+        query: slotCustomPrompt ? slotCustomPrompt.slice(0, 120) : plan.searchQuery,
         sourceType: 'ai',
         credit: AI_IMAGE_CREDIT,
-        customPrompt: useCustomAiPrompt || undefined
+        customPrompt: Boolean(slotCustomPrompt) || undefined
       });
     }
 
@@ -1102,7 +1128,7 @@ async function runRegenerateOneImage(taskId, index) {
   });
   if (!task) return;
 
-  const { inputs, imageCount, imageSize, imageSource, customImagePrompt } = parseInput(task);
+  const { inputs, imageCount, imageSize, imageSource, customImagePrompts } = parseInput(task);
   const keyword = inputs.keyword || '';
   const style = inputs.style || '';
   let output = stripWebAttribution(String(task.output || ''));
@@ -1116,6 +1142,7 @@ async function runRegenerateOneImage(taskId, index) {
   const prev = imageMeta[index] || {};
   const caption = prev.caption || `配图 ${index + 1}`;
   const searchQuery = prev.query || keyword || caption;
+  const slotCustomPrompt = imageSource === 'ai' ? customPromptAt(customImagePrompts, index) : '';
 
   const excludeUrls = [];
   for (let i = 0; i < imageUrls.length; i += 1) {
@@ -1129,7 +1156,7 @@ async function runRegenerateOneImage(taskId, index) {
     taskId,
     index + 1,
     imageSource,
-    customImagePrompt ? '(custom prompt)' : searchQuery
+    slotCustomPrompt ? '(custom prompt)' : searchQuery
   );
 
   let hitUrl;
@@ -1157,7 +1184,7 @@ async function runRegenerateOneImage(taskId, index) {
     photographer = hit.photographer || '';
     sourceUrl = hit.sourceUrl || '';
   } else {
-    let scenePrompt = customImagePrompt;
+    let scenePrompt = slotCustomPrompt;
     let plan = {};
     if (!scenePrompt) {
       const plans = await withTimeout(
@@ -1189,14 +1216,14 @@ async function runRegenerateOneImage(taskId, index) {
   }
 
   const storedUrl = await persistImageUrl(hitUrl);
-  const usedCustomPrompt = imageSource !== 'web' && Boolean(customImagePrompt);
+  const usedCustomPrompt = Boolean(slotCustomPrompt);
   imageUrls[index] = storedUrl;
   imageMeta[index] = {
     ...prev,
     url: storedUrl,
     remoteUrl: storedUrl === hitUrl ? undefined : hitUrl,
     caption: usedCustomPrompt ? caption || `配图 ${index + 1}` : caption,
-    query: usedCustomPrompt ? customImagePrompt.slice(0, 120) : searchQuery,
+    query: usedCustomPrompt ? slotCustomPrompt.slice(0, 120) : searchQuery,
     sourceType: imageSource === 'web' ? 'web' : 'ai',
     credit,
     photographer,

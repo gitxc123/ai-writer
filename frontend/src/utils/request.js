@@ -146,6 +146,7 @@ export const api = {
         imageSize: options.imageSize ?? 'landscape',
         imageSource: options.imageSource ?? 'ai',
         customImagePrompt: options.customImagePrompt,
+        customImagePrompts: options.customImagePrompts,
         productPhotos: options.productPhotos
       }
     }),

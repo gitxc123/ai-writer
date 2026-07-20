@@ -10,12 +10,12 @@ const PLATFORM_MAP = {
   今日头条创作: {
     id: 'toutiao',
     name: '今日头条',
-    tip: `复制后粘贴到头条号编辑器；标题已限制≤${TOUTIAO_TITLE_MAX}字，配图按图片链接插入`
+    tip: `复制后粘贴到头条号编辑器；标题已限制≤${TOUTIAO_TITLE_MAX}字。配图以内嵌图片复制，请用编辑器「粘贴」勿用纯文本`
   },
   公众号文案: {
     id: 'wechat',
     name: '微信公众号',
-    tip: '复制后粘贴到公众号后台，建议用「粘贴并匹配样式」'
+    tip: '复制后粘贴到公众号后台，建议用「粘贴并匹配样式」；配图已尽量内嵌'
   },
   抖音文案: {
     id: 'douyin',
@@ -38,6 +38,9 @@ const PLATFORM_MAP = {
     tip: '复制各镜「完整提示词」到所选 AI 平台即可单独生成片段'
   }
 };
+
+/** 粘贴内嵌图体积上限，过大则回退为链接模式 */
+const MAX_EMBED_HTML_CHARS = 7_000_000;
 
 export function detectPlatform(templateName = '') {
   return (
@@ -92,16 +95,34 @@ export function safeExportImageUrl(raw) {
   return '';
 }
 
-/** 粘贴用公网图链：优先原始远程地址，避免 /uploads 本机路径 */
-function exportImageUrl(item) {
-  const remote = item?.remoteUrl;
-  const remoteSafe = safeExportImageUrl(remote);
-  if (remoteSafe && /^https?:\/\//i.test(remoteSafe)) return remoteSafe;
-  return safeExportImageUrl(item?.url || '');
+/** 把 /uploads 相对路径补成可抓取的绝对地址 */
+export function absolutizeExportImageUrl(raw, baseOrigin = '') {
+  const safe = safeExportImageUrl(raw);
+  if (!safe) return '';
+  if (/^https?:\/\//i.test(safe)) return safe;
+  const origin = String(baseOrigin || '').replace(/\/$/, '');
+  if (safe.startsWith('/uploads/') && origin) return `${origin}${safe}`;
+  return safe;
 }
 
-function imageBlockHtml(item, idx) {
-  const src = exportImageUrl(item);
+/**
+ * 粘贴用图址：优先本站已签名 /uploads（可内嵌抓取），再退远程公网地址。
+ */
+function exportImageUrl(item, baseOrigin = '') {
+  const local = absolutizeExportImageUrl(item?.url, baseOrigin);
+  const remote = absolutizeExportImageUrl(item?.remoteUrl, baseOrigin);
+  if (local && /^https?:\/\//i.test(local)) return local;
+  if (remote && /^https?:\/\//i.test(remote)) return remote;
+  if (local.startsWith('/uploads/')) return local;
+  return local || remote || '';
+}
+
+function needsImageEmbed(platformId) {
+  return platformId === 'toutiao' || platformId === 'wechat' || platformId === 'general';
+}
+
+function imageBlockHtml(item, idx, baseOrigin = '') {
+  const src = exportImageUrl(item, baseOrigin);
   if (!src) return '';
   const notes = [];
   if (item.caption) notes.push(`图${idx + 1}：${escapeHtml(item.caption)}`);
@@ -117,32 +138,38 @@ function imageBlockHtml(item, idx) {
   return `<p style="margin:16px 0;text-align:center;"><img src="${escapeHtml(src)}" alt="${escapeHtml(item.caption || `配图${idx + 1}`)}" style="max-width:100%;height:auto;border-radius:6px;" /></p>${caption}`;
 }
 
-function imageBlockText(item, idx) {
+function imageBlockText(item, idx, { includeUrl = true, baseOrigin = '' } = {}) {
   const parts = [`[图片${idx + 1}`];
   if (item.caption) parts.push(`（${item.caption}）`);
   const isAi = item.sourceType === 'ai' || /AI\s*生成/.test(String(item.credit || ''));
   if (isAi) parts.push(' · AI生成，非现场真实照片');
   parts.push(']');
-  return `\n${parts.join('')}\n${exportImageUrl(item)}\n`;
+  if (!includeUrl) return `\n${parts.join('')}\n`;
+  const url = exportImageUrl(item, baseOrigin);
+  return url ? `\n${parts.join('')}\n${url}\n` : `\n${parts.join('')}\n`;
 }
 
 /**
- * 按平台生成可直接粘贴的图文包（图片链接模式）
+ * 按平台生成可直接粘贴的图文包。
+ * @param {{ templateName?: string, output?: string, images?: any[], imageBaseOrigin?: string }} opts
  */
-export function buildPlatformPack({ templateName, output, images = [] }) {
+export function buildPlatformPack({ templateName, output, images = [], imageBaseOrigin = '' } = {}) {
   const platform = detectPlatform(templateName);
   const { body, footer } = splitArticleOutput(output || '');
   let { title, paras } = pickTitleAndBody(body);
-  const imgs = (images || []).filter((i) => exportImageUrl(i));
+  const imgs = (images || []).filter((i) => exportImageUrl(i, imageBaseOrigin));
   const showFooter = Boolean(footer) && platform.id !== 'xhs';
+  const embedPlatform = needsImageEmbed(platform.id);
+  // 头条/公众号：纯文本不带裸链，避免编辑器优先粘贴成「只有链接」
+  const includeUrlInText = !embedPlatform;
 
   if (platform.id === 'toutiao') {
     title = clampToutiaoTitle(title);
   }
 
   const putImage = (item, idx) => ({
-    html: imageBlockHtml(item, idx),
-    text: imageBlockText(item, idx)
+    html: imageBlockHtml(item, idx, imageBaseOrigin),
+    text: imageBlockText(item, idx, { includeUrl: includeUrlInText, baseOrigin: imageBaseOrigin })
   });
 
   let html = '';
@@ -163,7 +190,7 @@ export function buildPlatformPack({ templateName, output, images = [] }) {
       text += `${p}\n`;
     });
   } else if (platform.id === 'toutiao' || platform.id === 'wechat' || platform.id === 'general') {
-    // 标题 → 首图链接 → 段落穿插其余图链接
+    // 标题 → 首图 → 段落穿插其余图
     if (title) {
       html += `<h2 style="font-size:22px;font-weight:700;margin:0 0 16px;line-height:1.4;">${escapeHtml(title)}</h2>`;
       text += `${title}\n\n`;
@@ -233,15 +260,148 @@ export function buildPlatformPack({ templateName, output, images = [] }) {
     html: `<div style="font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',sans-serif;color:#111;">${html}</div>`,
     text: text.trim(),
     imageCount: imgs.length,
-    titleMax: platform.id === 'toutiao' ? TOUTIAO_TITLE_MAX : null
+    titleMax: platform.id === 'toutiao' ? TOUTIAO_TITLE_MAX : null,
+    preferEmbedImages: embedPlatform && imgs.length > 0
   };
 }
 
+function blobToDataUrl(blob) {
+  return new Promise((resolve, reject) => {
+    const reader = new FileReader();
+    reader.onload = () => resolve(String(reader.result || ''));
+    reader.onerror = () => reject(reader.error || new Error('读取图片失败'));
+    reader.readAsDataURL(blob);
+  });
+}
+
+export async function fetchImageAsDataUrl(src) {
+  const url = String(src || '').trim();
+  if (!url) throw new Error('空图片地址');
+  if (url.startsWith('data:image/')) return url;
+  const res = await fetch(url, { mode: 'cors', credentials: 'omit', cache: 'force-cache' });
+  if (!res.ok) throw new Error(`图片拉取失败 ${res.status}`);
+  const blob = await res.blob();
+  if (!blob || blob.size < 32) throw new Error('图片为空');
+  return blobToDataUrl(blob);
+}
+
 /**
- * 一键复制图文：优先富文本 HTML（含图片链接），兼容纯文本
+ * 将 HTML 中的 img src 拉成本地 data URL，便于头条/公众号粘贴后显示图片。
+ */
+export async function embedHtmlImagesAsDataUrls(html, { maxChars = MAX_EMBED_HTML_CHARS } = {}) {
+  if (typeof document === 'undefined') {
+    return { html, embedded: 0, failed: 0, tooLarge: false };
+  }
+  const wrap = document.createElement('div');
+  wrap.innerHTML = html;
+  const imgs = [...wrap.querySelectorAll('img[src]')];
+  let embedded = 0;
+  let failed = 0;
+
+  for (const img of imgs) {
+    const src = img.getAttribute('src') || '';
+    if (!src) {
+      failed += 1;
+      continue;
+    }
+    if (src.startsWith('data:image/')) {
+      embedded += 1;
+      continue;
+    }
+    try {
+      const dataUrl = await fetchImageAsDataUrl(src);
+      img.setAttribute('src', dataUrl);
+      embedded += 1;
+    } catch {
+      failed += 1;
+    }
+  }
+
+  const out = wrap.innerHTML;
+  if (out.length > maxChars) {
+    return { html, embedded: 0, failed: imgs.length, tooLarge: true };
+  }
+  return { html: out, embedded, failed, tooLarge: false };
+}
+
+function waitForImages(root) {
+  const imgs = [...(root?.querySelectorAll?.('img') || [])];
+  return Promise.all(
+    imgs.map(
+      (img) =>
+        new Promise((resolve) => {
+          if (img.complete) {
+            resolve();
+            return;
+          }
+          const done = () => resolve();
+          img.addEventListener('load', done, { once: true });
+          img.addEventListener('error', done, { once: true });
+          setTimeout(done, 8000);
+        })
+    )
+  );
+}
+
+async function copyHtmlViaDom(html) {
+  const box = document.createElement('div');
+  box.setAttribute('contenteditable', 'true');
+  box.innerHTML = html;
+  box.style.cssText =
+    'position:fixed;left:0;top:0;width:640px;height:480px;opacity:0.01;pointer-events:none;z-index:-1;overflow:hidden;';
+  document.body.appendChild(box);
+  try {
+    await waitForImages(box);
+    box.focus();
+    const range = document.createRange();
+    range.selectNodeContents(box);
+    const sel = window.getSelection();
+    sel.removeAllRanges();
+    sel.addRange(range);
+    const ok = document.execCommand('copy');
+    sel.removeAllRanges();
+    if (!ok) throw new Error('execCommand copy failed');
+    return { ok: true, mode: 'html-embed' };
+  } finally {
+    document.body.removeChild(box);
+  }
+}
+
+/**
+ * 一键复制图文：头条/公众号优先内嵌图片二进制；避免纯文本裸链抢占粘贴。
  */
 export async function copyPlatformPack(pack) {
-  const { html, text } = pack;
+  let { html, text } = pack;
+  let embedMeta = null;
+
+  if (pack.preferEmbedImages && typeof document !== 'undefined') {
+    try {
+      embedMeta = await embedHtmlImagesAsDataUrls(html);
+      if (!embedMeta.tooLarge && embedMeta.embedded > 0) {
+        html = embedMeta.html;
+      } else {
+        embedMeta = { ...embedMeta, embedded: 0 };
+      }
+    } catch {
+      embedMeta = { embedded: 0, failed: pack.imageCount || 0, tooLarge: false };
+    }
+  }
+
+  const embeddedOk = Boolean(embedMeta?.embedded > 0 && !embedMeta?.tooLarge);
+
+  // 头条等编辑器对「选区复制」的内嵌图支持通常优于 ClipboardItem 裸链
+  if (embeddedOk) {
+    try {
+      const domResult = await copyHtmlViaDom(html);
+      return {
+        ...domResult,
+        embedded: embedMeta?.embedded || 0,
+        embedFailed: embedMeta?.failed || 0
+      };
+    } catch {
+      // fall through
+    }
+  }
 
   if (typeof ClipboardItem !== 'undefined' && navigator.clipboard?.write) {
     try {
@@ -250,7 +410,12 @@ export async function copyPlatformPack(pack) {
         'text/plain': new Blob([text], { type: 'text/plain' })
       });
       await navigator.clipboard.write([item]);
-      return { ok: true, mode: 'rich' };
+      return {
+        ok: true,
+        mode: embeddedOk ? 'rich-embed' : 'rich',
+        embedded: embedMeta?.embedded || 0,
+        embedFailed: embedMeta?.failed || 0
+      };
     } catch {
       // fall through
     }
@@ -269,20 +434,27 @@ export async function copyPlatformPack(pack) {
     const ok = document.execCommand('copy');
     sel.removeAllRanges();
     document.body.removeChild(box);
-    if (ok) return { ok: true, mode: 'html' };
+    if (ok) {
+      return {
+        ok: true,
+        mode: embeddedOk ? 'html-embed' : 'html',
+        embedded: embedMeta?.embedded || 0,
+        embedFailed: embedMeta?.failed || 0
+      };
+    }
   } catch {
     // fall through
   }
 
   if (navigator.clipboard?.writeText) {
     await navigator.clipboard.writeText(text);
-    return { ok: true, mode: 'text' };
+    return { ok: true, mode: 'text', embedded: 0, embedFailed: pack.imageCount || 0 };
   }
 
   return new Promise((resolve, reject) => {
     uni.setClipboardData({
       data: text,
-      success: () => resolve({ ok: true, mode: 'text' }),
+      success: () => resolve({ ok: true, mode: 'text', embedded: 0, embedFailed: pack.imageCount || 0 }),
       fail: (err) => reject(err)
     });
   });
