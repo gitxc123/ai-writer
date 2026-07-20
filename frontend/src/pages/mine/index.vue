@@ -139,7 +139,6 @@ function goActivate() {
 }
 
 function goVip() {
-  if (!userStore.checkLogin()) return;
   uni.navigateTo({ url: '/pages/vip/index' });
 }
 

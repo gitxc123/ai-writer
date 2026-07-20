@@ -53,18 +53,18 @@
 
     <view class="pay-bar">
       <view class="pay-info">
-        <text class="pay-label">应付</text>
+        <text class="pay-label">{{ demoPayEnabled ? '应付' : '参考价' }}</text>
         <text class="pay-amount">¥{{ currentPlan?.price ?? '-' }}</text>
       </view>
       <view
         class="pay-btn"
-        :class="{ disabled: paying || !demoPayEnabled }"
-        @click="pay"
+        :class="{ disabled: demoPayEnabled && paying }"
+        @click="onBottomAction"
       >
-        {{ payButtonText }}
+        {{ bottomButtonText }}
       </view>
     </view>
-    <text v-if="!demoPayEnabled" class="pay-off-tip">请联系客服开通会员。个人开发维持服务器与 AI Token 成本较高，虚拟服务一经售出概不退款，详见用户协议。</text>
+    <text v-if="!demoPayEnabled" class="pay-off-tip">在线支付未开通。开通会员请联系客服或使用激活码；代理须咨询客服。虚拟服务一经售出概不退款，详见用户协议。</text>
   </view>
 </template>
 
@@ -77,29 +77,30 @@ const userStore = useUserStore();
 const plans = ref([]);
 const selected = ref('monthly');
 const paying = ref(false);
-const demoPayEnabled = ref(true);
+const demoPayEnabled = ref(false);
 
 const currentPlan = computed(() => plans.value.find((p) => p.id === selected.value));
-const payButtonText = computed(() => {
-  if (!demoPayEnabled.value) return '请联系客服';
+const bottomButtonText = computed(() => {
+  if (!demoPayEnabled.value) return '联系客服';
   if (paying.value) return '处理中…';
   return '确认支付（演示）';
 });
 
 onMounted(async () => {
-  if (!userStore.checkLogin()) return;
   try {
     try {
       const cfg = await api.getMembershipConfig();
-      demoPayEnabled.value = cfg?.demoPayEnabled !== false;
+      demoPayEnabled.value = cfg?.demoPayEnabled === true;
     } catch {
-      demoPayEnabled.value = true;
+      demoPayEnabled.value = false;
     }
     plans.value = await api.getMemberPlans();
     if (plans.value.length && !plans.value.find((p) => p.id === selected.value)) {
       selected.value = plans.value[0].id;
     }
-    await refreshMe();
+    if (userStore.isLogin) {
+      await refreshMe();
+    }
   } catch (e) {
     uni.showToast({ title: e.message || '加载失败', icon: 'none' });
   }
@@ -130,12 +131,16 @@ function goContact() {
   uni.navigateTo({ url: '/pages/mine/contact' });
 }
 
-async function pay() {
-  if (paying.value || !currentPlan.value) return;
+function onBottomAction() {
   if (!demoPayEnabled.value) {
-    uni.showToast({ title: '请联系客服开通', icon: 'none' });
+    goContact();
     return;
   }
+  payDemo();
+}
+
+async function payDemo() {
+  if (paying.value || !currentPlan.value) return;
   if (!userStore.checkLogin()) return;
   paying.value = true;
   try {
