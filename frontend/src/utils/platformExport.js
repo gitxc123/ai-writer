@@ -325,126 +325,223 @@ export async function embedHtmlImagesAsDataUrls(html, { maxChars = MAX_EMBED_HTM
   return { html: out, embedded, failed, tooLarge: false };
 }
 
-function waitForImages(root) {
-  const imgs = [...(root?.querySelectorAll?.('img') || [])];
-  return Promise.all(
-    imgs.map(
-      (img) =>
-        new Promise((resolve) => {
-          if (img.complete) {
-            resolve();
-            return;
-          }
-          const done = () => resolve();
-          img.addEventListener('load', done, { once: true });
-          img.addEventListener('error', done, { once: true });
-          setTimeout(done, 8000);
-        })
-    )
-  );
-}
-
-async function copyHtmlViaDom(html) {
-  const box = document.createElement('div');
-  box.setAttribute('contenteditable', 'true');
-  box.innerHTML = html;
-  box.style.cssText =
-    'position:fixed;left:0;top:0;width:640px;height:480px;opacity:0.01;pointer-events:none;z-index:-1;overflow:hidden;';
-  document.body.appendChild(box);
+function copyHtmlSelectionSync(root) {
+  if (!root || typeof document === 'undefined') return false;
   try {
-    await waitForImages(box);
-    box.focus();
+    root.focus?.();
     const range = document.createRange();
-    range.selectNodeContents(box);
+    range.selectNodeContents(root);
     const sel = window.getSelection();
     sel.removeAllRanges();
     sel.addRange(range);
     const ok = document.execCommand('copy');
     sel.removeAllRanges();
-    if (!ok) throw new Error('execCommand copy failed');
-    return { ok: true, mode: 'html-embed' };
+    return Boolean(ok);
+  } catch {
+    return false;
+  }
+}
+
+/** 同步复制 HTML（无 await），用于仍持有用户手势时 */
+function copyHtmlViaDomSync(html) {
+  const box = document.createElement('div');
+  box.setAttribute('contenteditable', 'true');
+  box.innerHTML = html;
+  box.style.cssText =
+    'position:fixed;left:0;top:0;width:640px;max-height:480px;opacity:0.01;pointer-events:none;z-index:-1;overflow:hidden;';
+  document.body.appendChild(box);
+  try {
+    return copyHtmlSelectionSync(box);
   } finally {
-    document.body.removeChild(box);
+    box.remove();
+  }
+}
+
+async function tryClipboardItemWrite(html, text) {
+  if (typeof ClipboardItem === 'undefined' || !navigator.clipboard?.write) return false;
+  try {
+    const item = new ClipboardItem({
+      'text/html': new Blob([html], { type: 'text/html' }),
+      'text/plain': new Blob([text], { type: 'text/plain' })
+    });
+    await navigator.clipboard.write([item]);
+    return true;
+  } catch {
+    return false;
   }
 }
 
 /**
- * 一键复制图文：头条/公众号优先内嵌图片二进制；避免纯文本裸链抢占粘贴。
+ * 自动复制失败时（常见于手机微信）：弹出预览，让用户再点一次「复制图文」，重新获得手势。
+ */
+function copyHtmlViaConfirmSheet({ html, text, embedded = 0, embedFailed = 0 }) {
+  return new Promise((resolve, reject) => {
+    if (typeof document === 'undefined') {
+      reject(new Error('当前环境无法复制图文'));
+      return;
+    }
+
+    const existing = document.getElementById('aiw-rich-copy');
+    if (existing) existing.remove();
+
+    const mask = document.createElement('div');
+    mask.id = 'aiw-rich-copy';
+    mask.style.cssText =
+      'position:fixed;inset:0;z-index:2147483646;background:rgba(0,0,0,.5);display:flex;align-items:flex-end;justify-content:center;';
+
+    const sheet = document.createElement('div');
+    sheet.style.cssText =
+      'width:100%;max-width:640px;max-height:82vh;background:#fff;border-radius:16px 16px 0 0;padding:16px 16px calc(16px + env(safe-area-inset-bottom));box-sizing:border-box;display:flex;flex-direction:column;gap:10px;';
+
+    const title = document.createElement('div');
+    title.textContent =
+      embedded > 0 ? `配图已内嵌 ${embedded} 张，请再点一次完成复制` : '请再点一次复制图文';
+    title.style.cssText = 'font-size:16px;font-weight:700;color:#1a1a1a;';
+
+    const tip = document.createElement('div');
+    tip.textContent =
+      '手机浏览器需在弹出层内再次点击，才能把图片写入剪贴板。粘贴到头条/公众号请用「粘贴」，不要用纯文本。';
+    tip.style.cssText = 'font-size:12px;color:#909399;line-height:1.5;';
+
+    const preview = document.createElement('div');
+    preview.setAttribute('contenteditable', 'true');
+    preview.innerHTML = html;
+    preview.style.cssText =
+      'flex:1;min-height:180px;max-height:46vh;overflow:auto;border:1px solid #e4e7ed;border-radius:10px;padding:12px;font-size:14px;line-height:1.7;-webkit-user-select:text;user-select:text;';
+
+    const btnRow = document.createElement('div');
+    btnRow.style.cssText = 'display:flex;gap:10px;';
+
+    const btnCopy = document.createElement('button');
+    btnCopy.type = 'button';
+    btnCopy.textContent = embedded > 0 ? '复制图文到剪贴板' : '复制内容';
+    btnCopy.style.cssText =
+      'flex:1;height:44px;border:none;border-radius:22px;background:#0a84ff;color:#fff;font-size:16px;font-weight:600;';
+
+    const btnText = document.createElement('button');
+    btnText.type = 'button';
+    btnText.textContent = '仅文案';
+    btnText.style.cssText =
+      'width:88px;height:44px;border:1px solid #dcdfe6;border-radius:22px;background:#fff;color:#606266;font-size:14px;';
+
+    const btnClose = document.createElement('button');
+    btnClose.type = 'button';
+    btnClose.textContent = '取消';
+    btnClose.style.cssText =
+      'width:72px;height:44px;border:none;border-radius:22px;background:#f2f3f5;color:#606266;font-size:14px;';
+
+    const cleanup = () => mask.remove();
+
+    btnCopy.onclick = async () => {
+      // 二次点击：重新获得用户手势，此时同步复制内嵌图可成功
+      let ok = copyHtmlSelectionSync(preview);
+      if (!ok) ok = copyHtmlViaDomSync(html);
+      if (!ok) ok = await tryClipboardItemWrite(html, text);
+      if (ok) {
+        cleanup();
+        resolve({
+          ok: true,
+          mode: embedded > 0 ? 'html-embed' : 'html',
+          embedded,
+          embedFailed
+        });
+        return;
+      }
+      tip.textContent = '仍未写入剪贴板：可在上方预览区长按全选后复制，或点「仅文案」。';
+      tip.style.color = '#fa3534';
+    };
+
+    btnText.onclick = async () => {
+      try {
+        await copyTextToClipboard(text);
+        cleanup();
+        resolve({ ok: true, mode: 'text', embedded: 0, embedFailed: embedFailed || 0 });
+      } catch (e) {
+        tip.textContent = e.message || '文案复制失败';
+        tip.style.color = '#fa3534';
+      }
+    };
+
+    btnClose.onclick = () => {
+      cleanup();
+      reject(new Error('已取消复制'));
+    };
+
+    mask.addEventListener('click', (e) => {
+      if (e.target === mask) {
+        cleanup();
+        reject(new Error('已取消复制'));
+      }
+    });
+
+    btnRow.appendChild(btnCopy);
+    btnRow.appendChild(btnText);
+    btnRow.appendChild(btnClose);
+    sheet.appendChild(title);
+    sheet.appendChild(tip);
+    sheet.appendChild(preview);
+    sheet.appendChild(btnRow);
+    mask.appendChild(sheet);
+    document.body.appendChild(mask);
+
+    // 预选中，部分机型可直接 Cmd/Ctrl+C
+    setTimeout(() => {
+      copyHtmlSelectionSync(preview);
+    }, 80);
+  });
+}
+
+/**
+ * 一键复制图文：头条/公众号优先内嵌图片二进制；手机端自动复制失败时弹出二次确认。
  */
 export async function copyPlatformPack(pack) {
   let { html, text } = pack;
-  let embedMeta = null;
+  let embedMeta = { embedded: 0, failed: 0, tooLarge: false };
 
   if (pack.preferEmbedImages && typeof document !== 'undefined') {
     try {
-      embedMeta = await embedHtmlImagesAsDataUrls(html);
-      if (!embedMeta.tooLarge && embedMeta.embedded > 0) {
-        html = embedMeta.html;
+      const meta = await embedHtmlImagesAsDataUrls(html);
+      if (!meta.tooLarge && meta.embedded > 0) {
+        html = meta.html;
+        embedMeta = meta;
       } else {
-        embedMeta = { ...embedMeta, embedded: 0 };
+        embedMeta = { embedded: 0, failed: meta.failed || pack.imageCount || 0, tooLarge: Boolean(meta.tooLarge) };
       }
     } catch {
       embedMeta = { embedded: 0, failed: pack.imageCount || 0, tooLarge: false };
     }
   }
 
-  const embeddedOk = Boolean(embedMeta?.embedded > 0 && !embedMeta?.tooLarge);
+  const embedded = embedMeta.embedded || 0;
+  const embedFailed = embedMeta.failed || 0;
+  const embeddedOk = embedded > 0;
 
-  // 头条等编辑器对「选区复制」的内嵌图支持通常优于 ClipboardItem 裸链
-  if (embeddedOk) {
-    try {
-      const domResult = await copyHtmlViaDom(html);
-      return {
-        ...domResult,
-        embedded: embedMeta?.embedded || 0,
-        embedFailed: embedMeta?.failed || 0
-      };
-    } catch {
-      // fall through
-    }
+  // 桌面端：异步后 ClipboardItem / 选区复制仍可能成功
+  if (await tryClipboardItemWrite(html, text)) {
+    return {
+      ok: true,
+      mode: embeddedOk ? 'rich-embed' : 'rich',
+      embedded,
+      embedFailed
+    };
+  }
+  if (copyHtmlViaDomSync(html)) {
+    return {
+      ok: true,
+      mode: embeddedOk ? 'html-embed' : 'html',
+      embedded,
+      embedFailed
+    };
   }
 
-  if (typeof ClipboardItem !== 'undefined' && navigator.clipboard?.write) {
-    try {
-      const item = new ClipboardItem({
-        'text/html': new Blob([html], { type: 'text/html' }),
-        'text/plain': new Blob([text], { type: 'text/plain' })
-      });
-      await navigator.clipboard.write([item]);
-      return {
-        ok: true,
-        mode: embeddedOk ? 'rich-embed' : 'rich',
-        embedded: embedMeta?.embedded || 0,
-        embedFailed: embedMeta?.failed || 0
-      };
-    } catch {
-      // fall through
-    }
-  }
-
-  try {
-    const box = document.createElement('div');
-    box.innerHTML = html;
-    box.style.cssText = 'position:fixed;left:-9999px;top:0;width:1px;height:1px;opacity:0;';
-    document.body.appendChild(box);
-    const range = document.createRange();
-    range.selectNodeContents(box);
-    const sel = window.getSelection();
-    sel.removeAllRanges();
-    sel.addRange(range);
-    const ok = document.execCommand('copy');
-    sel.removeAllRanges();
-    document.body.removeChild(box);
-    if (ok) {
-      return {
-        ok: true,
-        mode: embeddedOk ? 'html-embed' : 'html',
-        embedded: embedMeta?.embedded || 0,
-        embedFailed: embedMeta?.failed || 0
-      };
-    }
-  } catch {
-    // fall through
+  // 手机微信等：必须二次点击才能带上内嵌图
+  if (pack.preferEmbedImages && typeof document !== 'undefined') {
+    return copyHtmlViaConfirmSheet({
+      html,
+      text,
+      embedded,
+      embedFailed: embedFailed || pack.imageCount || 0
+    });
   }
 
   await copyTextToClipboard(text);

@@ -1283,56 +1283,36 @@ async function copyPack() {
       imageBaseOrigin: backendOrigin()
     });
 
-    // 先在点击同步链里锁住纯文本，避免后续打包配图的 await 丢掉手势后整段失败
-    let textSecured = false;
-    try {
-      await copyTextToClipboard(pack.text, { manualFallback: false });
-      textSecured = true;
-    } catch {
-      textSecured = false;
+    // 不要先复制纯文本：会盖掉后续图文，导致粘贴只有字没有图
+    if (pack.preferEmbedImages) {
+      uni.showToast({ title: '正在内嵌配图…', icon: 'none', duration: 1500 });
     }
 
-    const wantEmbed =
-      platformInfo.value.id === 'toutiao' || platformInfo.value.id === 'wechat';
-    if (wantEmbed) {
-      uni.showToast({ title: '正在打包配图…', icon: 'none', duration: 1200 });
-    }
-
-    let result = null;
-    try {
-      result = await copyPlatformPack(pack);
-    } catch (e) {
-      if (textSecured) {
-        uni.showToast({
-          title: '已复制文案。配图请长按保存后手动上传',
-          icon: 'none',
-          duration: 2800
-        });
-        return;
-      }
-      await copyTextToClipboard(pack.text);
-      uni.showToast({ title: '请在弹出层中长按复制文案', icon: 'none', duration: 2500 });
-      return;
-    }
-
+    const result = await copyPlatformPack(pack);
     const embedded = Number(result.embedded || 0);
     let tip;
-    if (embedded > 0 && (result.mode === 'rich-embed' || result.mode === 'html-embed' || result.mode === 'rich')) {
+    if (result.mode === 'text') {
+      tip = `已复制文案。配图未写入剪贴板，请长按预览图保存后手动上传`;
+    } else if (embedded > 0 && (result.mode === 'rich-embed' || result.mode === 'html-embed' || result.mode === 'rich')) {
       tip =
         pack.platform.id === 'toutiao'
           ? `已复制图文（${embedded}张图已内嵌）。粘贴到头条编辑器即可显示`
           : `已复制${pack.platform.name}图文（${embedded}张图已内嵌），可直接粘贴`;
     } else if (result.mode === 'rich' || result.mode === 'html') {
-      tip = `已复制${pack.platform.name}图文。若平台只显示链接，请右键保存配图后手动上传`;
+      tip = `已复制${pack.platform.name}图文。若平台只显示链接，请长按配图保存后手动上传`;
     } else {
-      tip = `已复制文本。${pack.platform.name}建议用富文本粘贴，或手动上传配图`;
+      tip = `已复制。${pack.platform.name}建议用富文本粘贴`;
     }
     if (pack.platform.id === 'toutiao' && pack.title && embedded > 0) {
       tip = `已内嵌${embedded}张图。标题${charLen(pack.title)}/30字，粘贴到头条编辑器`;
     }
     uni.showToast({ title: tip, icon: 'none', duration: 3200 });
   } catch (e) {
-    uni.showToast({ title: e.message || '复制失败', icon: 'none' });
+    if (String(e.message || '').includes('取消')) {
+      uni.showToast({ title: '已取消', icon: 'none' });
+    } else {
+      uni.showToast({ title: e.message || '复制失败', icon: 'none' });
+    }
   } finally {
     copying.value = false;
   }
