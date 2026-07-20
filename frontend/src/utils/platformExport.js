@@ -1,5 +1,6 @@
 import { splitArticleOutput, buildCompactComplianceNote } from './articleOutput.js';
 import { clampToutiaoTitle, TOUTIAO_TITLE_MAX } from './platformLimits.js';
+import { copyTextToClipboard } from './clipboard.js';
 
 const PLATFORM_MAP = {
   小红书创作: {
@@ -446,16 +447,6 @@ export async function copyPlatformPack(pack) {
     // fall through
   }
 
-  if (navigator.clipboard?.writeText) {
-    await navigator.clipboard.writeText(text);
-    return { ok: true, mode: 'text', embedded: 0, embedFailed: pack.imageCount || 0 };
-  }
-
-  return new Promise((resolve, reject) => {
-    uni.setClipboardData({
-      data: text,
-      success: () => resolve({ ok: true, mode: 'text', embedded: 0, embedFailed: pack.imageCount || 0 }),
-      fail: (err) => reject(err)
-    });
-  });
+  await copyTextToClipboard(text);
+  return { ok: true, mode: 'text', embedded: 0, embedFailed: pack.imageCount || 0 };
 }

@@ -31,13 +31,6 @@
             {{ getStatusMeta(item.status).label }}
           </text>
         </view>
-        <view v-if="expandedIds[item.id]" class="id-row">
-          <text class="task-id">ID {{ shortId(item.id) }}</text>
-          <text class="copy-id" @click.stop="copyTaskId(item.id)">复制</text>
-        </view>
-        <text class="meta-toggle" @click.stop="toggleId(item.id)">
-          {{ expandedIds[item.id] ? '收起 ID' : '查看 ID' }}
-        </text>
         <text class="time">{{ formatTime(item.updatedAt || item.createdAt) }}</text>
         <view v-if="item.imageUrls?.length && (item.status === 'completed' || item.status === 'failed')" class="thumb-row">
           <view
@@ -69,7 +62,7 @@
 </template>
 
 <script setup>
-import { ref, reactive, onMounted } from 'vue';
+import { ref, onMounted } from 'vue';
 import { onShow } from '@dcloudio/uni-app';
 import { api } from '../../utils/request.js';
 import { useUserStore } from '../../stores/user.js';
@@ -91,11 +84,6 @@ const loading = ref(false);
 const backgroundLoading = ref(false);
 const userStore = useUserStore();
 const showOps = ref(false);
-const expandedIds = reactive({});
-
-function toggleId(id) {
-  expandedIds[id] = !expandedIds[id];
-}
 
 function goTemplates() {
   uni.redirectTo({ url: '/pages/templates/index' });
@@ -190,18 +178,6 @@ function formatTime(t) {
   return new Date(t).toLocaleString('zh-CN');
 }
 
-function shortId(id) {
-  const s = String(id || '');
-  return s.length <= 10 ? s : `${s.slice(0, 8)}…`;
-}
-
-function copyTaskId(id) {
-  uni.setClipboardData({
-    data: String(id),
-    success: () => uni.showToast({ title: '任务 ID 已复制', icon: 'none' })
-  });
-}
-
 function openDetail(item) {
   if (item.taskType === 'image' && item.parentId) {
     uni.navigateTo({ url: `/pages/create/create?recordId=${item.parentId}` });
@@ -276,12 +252,6 @@ onShow(() => {
   padding: 16rpx 40rpx;
   border-radius: 999rpx;
 }
-.meta-toggle {
-  display: block;
-  font-size: 22rpx;
-  color: #909399;
-  margin-top: 6rpx;
-}
 .record-item {
   background: #fff;
   border-radius: 16rpx;
@@ -341,23 +311,6 @@ onShow(() => {
   color: #909399;
   margin-top: 8rpx;
   display: block;
-}
-.id-row {
-  display: flex;
-  align-items: center;
-  gap: 16rpx;
-  margin-top: 8rpx;
-}
-.task-id {
-  font-size: 22rpx;
-  color: #909399;
-  font-family: ui-monospace, monospace;
-}
-.copy-id {
-  font-size: 22rpx;
-  color: #0a84ff;
-  padding: 4rpx 8rpx;
-  flex-shrink: 0;
 }
 .thumb-row {
   display: flex;

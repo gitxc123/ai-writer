@@ -39,6 +39,7 @@
 <script setup>
 import { ref, onMounted } from 'vue';
 import { api } from '../../utils/request.js';
+import { copyTextToClipboard } from '../../utils/clipboard.js';
 
 const filter = ref('');
 const items = ref([]);
@@ -82,12 +83,14 @@ function loadRecent() {
   load();
 }
 
-function copyId(id) {
+async function copyId(id) {
   if (!id) return;
-  uni.setClipboardData({
-    data: id,
-    success: () => uni.showToast({ title: '已复制任务 ID', icon: 'none' })
-  });
+  try {
+    await copyTextToClipboard(id);
+    uni.showToast({ title: '已复制任务 ID', icon: 'none' });
+  } catch (e) {
+    uni.showToast({ title: e.message || '复制失败', icon: 'none' });
+  }
 }
 
 onMounted(() => load());

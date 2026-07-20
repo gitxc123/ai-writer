@@ -15,7 +15,7 @@
       v-for="plan in plans"
       :key="plan.id"
       class="plan"
-      :class="{ active: selected === plan.id, lifetime: plan.id === 'lifetime' }"
+      :class="[plan.id, { active: selected === plan.id }]"
       @click="selected = plan.id"
     >
       <view class="plan-top">
@@ -37,34 +37,30 @@
     <view class="agent-card">
       <view class="plan-top">
         <view class="plan-name-row">
-          <text class="plan-name">代理</text>
-          <text class="badge agent-badge">咨询客服</text>
+          <text class="plan-name">成为代理</text>
+          <text class="badge agent-badge">高分成</text>
         </view>
-        <text class="agent-rate">50% 分成</text>
+        <text class="agent-rate">50% 盈利分成</text>
       </view>
-      <text class="plan-desc">永久获得代理身份与约 50% 卖码分成；须联系客服开通，不在线自助购买。</text>
+      <text class="plan-desc">
+        不止卖工具：永久解锁本产品全部创作能力，卖出会员激活码还可拿约 50% 盈利分成——自己用、帮别人开通，双重收益。
+      </text>
       <view class="features">
-        <text class="feat">· 永久代理身份（与永久会员分开）</text>
-        <text class="feat">· 由运营发码，线下微信结算</text>
-        <text class="feat">· 不可自行发展下级代理</text>
+        <text class="feat">· 永久享有本工具全部创作能力（模板、图文、配图等）</text>
+        <text class="feat">· 卖码结算约 50% 盈利分成，多推多赚</text>
+        <text class="feat">· 支持发展推广伙伴，一起做大业绩</text>
+        <text class="feat">· 联系客服开通即可</text>
       </view>
-      <view class="contact-btn" @click="goContact">联系客服咨询代理</view>
+      <view class="contact-btn" @click="goContact">联系客服开通代理</view>
     </view>
 
     <view class="pay-bar">
       <view class="pay-info">
-        <text class="pay-label">{{ demoPayEnabled ? '应付' : '参考价' }}</text>
         <text class="pay-amount">¥{{ currentPlan?.price ?? '-' }}</text>
       </view>
-      <view
-        class="pay-btn"
-        :class="{ disabled: demoPayEnabled && paying }"
-        @click="onBottomAction"
-      >
-        {{ bottomButtonText }}
-      </view>
+      <view class="pay-btn" @click="onBottomAction">联系客服</view>
     </view>
-    <text v-if="!demoPayEnabled" class="pay-off-tip">在线支付未开通。开通会员请联系客服或使用激活码；代理须咨询客服。虚拟服务一经售出概不退款，详见用户协议。</text>
+    <text class="pay-off-tip">各档会员与代理均不支持在线支付。请联系客服开通，或使用激活码；虚拟服务一经售出概不退款，详见用户协议。</text>
   </view>
 </template>
 
@@ -76,24 +72,11 @@ import { useUserStore } from '../../stores/user.js';
 const userStore = useUserStore();
 const plans = ref([]);
 const selected = ref('monthly');
-const paying = ref(false);
-const demoPayEnabled = ref(false);
 
 const currentPlan = computed(() => plans.value.find((p) => p.id === selected.value));
-const bottomButtonText = computed(() => {
-  if (!demoPayEnabled.value) return '联系客服';
-  if (paying.value) return '处理中…';
-  return '确认支付（演示）';
-});
 
 onMounted(async () => {
   try {
-    try {
-      const cfg = await api.getMembershipConfig();
-      demoPayEnabled.value = cfg?.demoPayEnabled === true;
-    } catch {
-      demoPayEnabled.value = false;
-    }
     plans.value = await api.getMemberPlans();
     if (plans.value.length && !plans.value.find((p) => p.id === selected.value)) {
       selected.value = plans.value[0].id;
@@ -132,31 +115,7 @@ function goContact() {
 }
 
 function onBottomAction() {
-  if (!demoPayEnabled.value) {
-    goContact();
-    return;
-  }
-  payDemo();
-}
-
-async function payDemo() {
-  if (paying.value || !currentPlan.value) return;
-  if (!userStore.checkLogin()) return;
-  paying.value = true;
-  try {
-    const order = await api.createMemberOrder(currentPlan.value.id);
-    const result = await api.payMemberOrder(order.orderId);
-    if (result?.user) userStore.user = result.user;
-    await refreshMe();
-    uni.showToast({ title: '开通成功', icon: 'success', duration: 1200 });
-    setTimeout(() => {
-      uni.navigateBack({ fail: () => uni.reLaunch({ url: '/pages/mine/index' }) });
-    }, 800);
-  } catch (e) {
-    uni.showToast({ title: e.message || '支付失败', icon: 'none' });
-  } finally {
-    paying.value = false;
-  }
+  goContact();
 }
 </script>
 
@@ -197,33 +156,87 @@ async function payDemo() {
   margin-bottom: 20rpx;
   border: 2rpx solid transparent;
 }
-.plan.active {
+.plan.trial.active {
+  border-color: #909399;
+  box-shadow: 0 0 0 2rpx rgba(144, 147, 153, 0.2);
+}
+.plan.monthly.active {
   border-color: #0a84ff;
-  box-shadow: 0 0 0 2rpx rgba(10, 132, 255, 0.15);
+  box-shadow: 0 0 0 2rpx rgba(10, 132, 255, 0.2);
+}
+.plan.yearly.active {
+  border-color: #9a6b2f;
+  box-shadow: 0 0 0 2rpx rgba(154, 107, 47, 0.25);
+}
+/* 套餐背景：试用 → 月卡 → 年卡 → 永久 → 代理，逐级更厚重 */
+.plan.trial {
+  background: #f7f8fa;
+  border-color: #e4e7ed;
+}
+.plan.monthly {
+  background: linear-gradient(160deg, #ffffff 0%, #eef5ff 100%);
+  border-color: #d6e6ff;
+}
+.plan.yearly {
+  background: linear-gradient(160deg, #fffdf8 0%, #f3e8d4 100%);
+  border-color: #e8d5b5;
+}
+.plan.yearly .badge {
+  color: #9a6b2f;
+  background: rgba(154, 107, 47, 0.12);
+}
+.plan.yearly .price-row {
+  color: #9a6b2f;
 }
 .plan.lifetime {
-  background: linear-gradient(135deg, #fff 0%, #fff8ef 100%);
+  background: linear-gradient(155deg, #f7e8c8 0%, #e4c48a 55%, #d4a85c 100%);
+  border-color: #c4923a;
+}
+.plan.lifetime .plan-name,
+.plan.lifetime .plan-desc,
+.plan.lifetime .feat {
+  color: #3d2a12;
+}
+.plan.lifetime .badge {
+  color: #5c3d12;
+  background: rgba(255, 255, 255, 0.45);
+}
+.plan.lifetime .price-row {
+  color: #5c3d12;
+}
+.plan.lifetime.active {
+  border-color: #8a6420;
+  box-shadow: 0 0 0 2rpx rgba(138, 100, 32, 0.25);
 }
 .agent-card {
-  background: #fff;
+  background: linear-gradient(155deg, #2a241c 0%, #1a1510 45%, #0f0d0b 100%);
   border-radius: 16rpx;
   padding: 28rpx;
   margin-bottom: 20rpx;
-  border: 2rpx dashed #c0c4cc;
+  border: 2rpx solid #c9a227;
 }
-.agent-badge {
-  color: #e6a23c;
-  background: #fdf6ec;
+.agent-card .plan-name,
+.agent-card .plan-desc,
+.agent-card .feat {
+  color: #f3e6c8;
+}
+.agent-card .plan-desc,
+.agent-card .feat {
+  color: rgba(243, 230, 200, 0.82);
+}
+.agent-card .badge.agent-badge {
+  color: #1a1510;
+  background: linear-gradient(90deg, #f0d78c, #c9a227);
 }
 .agent-rate {
   font-size: 28rpx;
   font-weight: 700;
-  color: #e6a23c;
+  color: #f0d78c;
 }
 .contact-btn {
   margin-top: 20rpx;
-  background: #1a1a2e;
-  color: #fff;
+  background: linear-gradient(90deg, #f0d78c, #c9a227);
+  color: #1a1510;
   text-align: center;
   padding: 20rpx;
   border-radius: 999rpx;
@@ -294,11 +307,6 @@ async function payDemo() {
 }
 .pay-info {
   flex: 1;
-}
-.pay-label {
-  font-size: 22rpx;
-  color: #909399;
-  display: block;
 }
 .pay-amount {
   font-size: 36rpx;

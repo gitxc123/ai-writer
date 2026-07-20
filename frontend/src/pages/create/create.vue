@@ -449,6 +449,7 @@ import {
   toggleSellingPoint
 } from '../../utils/productSellingPoints.js';
 import { promptVipUpgrade } from '../../utils/vipGate.js';
+import { copyTextToClipboard } from '../../utils/clipboard.js';
 
 const template = ref(null);
 const inputs = reactive({});
@@ -866,12 +867,14 @@ function shortTaskId(id) {
   return s.length <= 10 ? s : `${s.slice(0, 8)}…`;
 }
 
-function copyCurrentTaskId() {
+async function copyCurrentTaskId() {
   if (!currentRecordId.value) return;
-  uni.setClipboardData({
-    data: String(currentRecordId.value),
-    success: () => uni.showToast({ title: '任务 ID 已复制', icon: 'none' })
-  });
+  try {
+    await copyTextToClipboard(currentRecordId.value);
+    uni.showToast({ title: '任务 ID 已复制', icon: 'none' });
+  } catch (e) {
+    uni.showToast({ title: e.message || '复制失败', icon: 'none' });
+  }
 }
 
 async function loadTask(id, options = {}) {
@@ -1306,41 +1309,46 @@ async function copyPack() {
   }
 }
 
-function copyExportTitle() {
+async function copyExportTitle() {
   const title = clampToutiaoTitle(exportTitle.value || '');
   if (!title) {
     uni.showToast({ title: '没有可复制的标题', icon: 'none' });
     return;
   }
-  uni.setClipboardData({
-    data: title,
-    success: () =>
-      uni.showToast({
-        title: `标题已复制（${charLen(title)}/30字）`,
-        icon: 'none'
-      })
-  });
+  try {
+    await copyTextToClipboard(title);
+    uni.showToast({
+      title: `标题已复制（${charLen(title)}/30字）`,
+      icon: 'none'
+    });
+  } catch (e) {
+    uni.showToast({ title: e.message || '复制失败', icon: 'none' });
+  }
 }
 
-function copyTextOnly() {
+async function copyTextOnly() {
   // 含 AI 标识与配图免责，避免一键复制剥离合规声明
   const full = String(output.value || '').trim();
-  uni.setClipboardData({
-    data: full || articleBody.value,
-    success: () => uni.showToast({ title: '文案已复制（含标识说明）', icon: 'none' })
-  });
+  try {
+    await copyTextToClipboard(full || articleBody.value);
+    uni.showToast({ title: '文案已复制（含标识说明）', icon: 'none' });
+  } catch (e) {
+    uni.showToast({ title: e.message || '复制失败', icon: 'none' });
+  }
 }
 
-function copyShotPrompt(shot) {
+async function copyShotPrompt(shot) {
   const text = String(shot?.prompt || '').trim();
   if (!text) {
     uni.showToast({ title: '该镜头暂无可复制提示词', icon: 'none' });
     return;
   }
-  uni.setClipboardData({
-    data: text,
-    success: () => uni.showToast({ title: `镜头 ${shot.id} 已复制` })
-  });
+  try {
+    await copyTextToClipboard(text);
+    uni.showToast({ title: `镜头 ${shot.id} 已复制` });
+  } catch (e) {
+    uni.showToast({ title: e.message || '复制失败', icon: 'none' });
+  }
 }
 
 async function retryTask() {
