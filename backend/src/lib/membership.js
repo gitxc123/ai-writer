@@ -1,6 +1,7 @@
 /**
  * 会员套餐定义
- * trial: 试用3天 | monthly: 包月 | yearly: 包年 | lifetime: 永久会员+永久代理(分成50%)
+ * trial / monthly / yearly / lifetime（纯永久会员，不含代理）
+ * 代理身份不在线开通：联系客服，永久获得 50% 分成（卖码结算）
  */
 export const MEMBER_PLANS = [
   {
@@ -32,23 +33,36 @@ export const MEMBER_PLANS = [
   },
   {
     id: 'lifetime',
-    name: '永久会员 + 代理',
+    name: '永久会员',
     price: 499,
     days: 0, // 0 = 永久
     badge: '永久',
-    desc: '永久会员权益，并成为代理：由运营发放激活码，代理售卖给用户兑换开通',
+    desc: '一次开通，长期使用全部创作能力（不含代理身份）',
     features: [
       '永久会员全部权益',
+      '全部模板与图文能力',
       '每日最多 30 次创作',
       '单次最多 5 张配图',
-      '代理身份（卖码开通）',
-      '查看码库存与开通记录',
-      '线下微信收款结算'
-    ],
-    isAgent: true,
-    agentRate: 0.5
+      '不含代理身份与分成'
+    ]
   }
 ];
+
+/** 代理说明（展示用，不可在线自助购买） */
+export const AGENT_PROGRAM = {
+  id: 'agent',
+  name: '代理',
+  badge: '咨询客服',
+  rate: 0.5,
+  desc: '永久代理身份，卖码结算可获 50% 分成；须联系客服开通，不在线自助购买',
+  features: [
+    '永久代理身份',
+    '卖码结算约 50% 分成（以约定为准）',
+    '由运营发放会员激活码库存',
+    '不可自行发展下级代理',
+    '请通过「联系客服」咨询开通'
+  ]
+};
 
 export function getPlan(planId) {
   return MEMBER_PLANS.find((p) => p.id === planId) || null;

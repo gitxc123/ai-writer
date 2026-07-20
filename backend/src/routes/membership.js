@@ -3,6 +3,7 @@ import { prisma } from '../lib/prisma.js';
 import { authMiddleware } from '../middleware/auth.js';
 import {
   MEMBER_PLANS,
+  AGENT_PROGRAM,
   getPlan,
   calcExpireAt,
   isMemberActive,
@@ -60,7 +61,8 @@ router.get('/config', (_req, res) => {
       demoPayEnabled: isDemoPayEnabled(),
       dailyGenerateLimit: getDailyGenerateLimit(),
       activationCodeDays: ACTIVATION_CODE_DAYS,
-      codePlans: CODE_PLAN_PRESETS
+      codePlans: CODE_PLAN_PRESETS,
+      agentProgram: AGENT_PROGRAM
     }
   });
 });

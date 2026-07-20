@@ -22,7 +22,7 @@
       <view class="menu-item" @click="goVip">
         <view>
           <text class="menu-title">会员规则</text>
-          <text class="menu-sub">试用 · 月卡 · 年卡 · 永久套餐说明</text>
+          <text class="menu-sub">试用 · 月卡 · 年卡 · 永久；代理请咨询客服</text>
         </view>
         <text class="arrow">›</text>
       </view>

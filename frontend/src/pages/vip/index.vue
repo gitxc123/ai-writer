@@ -34,6 +34,23 @@
       </view>
     </view>
 
+    <view class="agent-card">
+      <view class="plan-top">
+        <view class="plan-name-row">
+          <text class="plan-name">代理</text>
+          <text class="badge agent-badge">咨询客服</text>
+        </view>
+        <text class="agent-rate">50% 分成</text>
+      </view>
+      <text class="plan-desc">永久获得代理身份与约 50% 卖码分成；须联系客服开通，不在线自助购买。</text>
+      <view class="features">
+        <text class="feat">· 永久代理身份（与永久会员分开）</text>
+        <text class="feat">· 由运营发码，线下微信结算</text>
+        <text class="feat">· 不可自行发展下级代理</text>
+      </view>
+      <view class="contact-btn" @click="goContact">联系客服咨询代理</view>
+    </view>
+
     <view class="pay-bar">
       <view class="pay-info">
         <text class="pay-label">应付</text>
@@ -109,6 +126,10 @@ function formatDate(v) {
   return `${d.getFullYear()}-${m}-${day} ${hh}:${mm}`;
 }
 
+function goContact() {
+  uni.navigateTo({ url: '/pages/mine/contact' });
+}
+
 async function pay() {
   if (paying.value || !currentPlan.value) return;
   if (!demoPayEnabled.value) {
@@ -177,6 +198,32 @@ async function pay() {
 }
 .plan.lifetime {
   background: linear-gradient(135deg, #fff 0%, #fff8ef 100%);
+}
+.agent-card {
+  background: #fff;
+  border-radius: 16rpx;
+  padding: 28rpx;
+  margin-bottom: 20rpx;
+  border: 2rpx dashed #c0c4cc;
+}
+.agent-badge {
+  color: #e6a23c;
+  background: #fdf6ec;
+}
+.agent-rate {
+  font-size: 28rpx;
+  font-weight: 700;
+  color: #e6a23c;
+}
+.contact-btn {
+  margin-top: 20rpx;
+  background: #1a1a2e;
+  color: #fff;
+  text-align: center;
+  padding: 20rpx;
+  border-radius: 999rpx;
+  font-size: 28rpx;
+  font-weight: 600;
 }
 .plan-top {
   display: flex;
