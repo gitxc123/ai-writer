@@ -82,6 +82,48 @@ export function withUploadSignature(url, ttlSec) {
   return origin ? `${origin}${signedPath}` : signedPath;
 }
 
+/**
+ * 从签名 URL 或路径提取稳定的 /uploads/xxx（用于客户端复用缓存）
+ */
+export function extractUploadPath(url) {
+  const raw = String(url || '').trim();
+  if (!raw) return null;
+
+  let pathPart = raw;
+  if (/^https?:\/\//i.test(raw)) {
+    try {
+      pathPart = new URL(raw).pathname;
+    } catch {
+      return null;
+    }
+  } else if (!raw.startsWith('/')) {
+    pathPart = `/${raw.replace(/^\.\//, '')}`;
+  }
+
+  if (!pathPart.startsWith('/uploads/')) return null;
+  const filename = pathPart.slice('/uploads/'.length).split('?')[0].split('/')[0];
+  if (!filename || filename.includes('..')) return null;
+  return `/uploads/${filename}`;
+}
+
+/** 列表项附带稳定 upload 路径，便于前端缓存缩略图 URL */
+export function attachUploadPaths(record) {
+  if (!record) return record;
+  const next = { ...record };
+  next.imageUrlPath = extractUploadPath(next.imageUrl);
+  next.imagePaths = Array.isArray(next.imageUrls)
+    ? next.imageUrls.map((u) => extractUploadPath(u)).filter(Boolean)
+    : [];
+  if (Array.isArray(next.imageMeta)) {
+    next.imageMeta = next.imageMeta.map((m) =>
+      m && typeof m === 'object'
+        ? { ...m, path: extractUploadPath(m.url) || m.path || null }
+        : m
+    );
+  }
+  return next;
+}
+
 /** 批量给记录里的本地图链签名（API 出站） */
 export function signRecordImageFields(record) {
   if (!record || !uploadsRequireSignature()) return record;

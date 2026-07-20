@@ -1,5 +1,7 @@
 import { defineStore } from 'pinia';
 import { api } from '../utils/request.js';
+import { clearRecordsCache } from '../utils/recordsCache.js';
+import { clearImageUrlCache } from '../utils/imageUrlCache.js';
 
 export const useUserStore = defineStore('user', {
   state: () => ({
@@ -25,9 +27,14 @@ export const useUserStore = defineStore('user', {
       this.user = await api.getMe();
     },
     logout() {
+      const uid = this.user?.id;
       this.token = '';
       this.user = null;
       uni.removeStorageSync('token');
+      if (uid) {
+        clearRecordsCache(uid);
+        clearImageUrlCache(uid);
+      }
     },
     checkLogin() {
       if (!this.token) {

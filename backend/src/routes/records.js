@@ -1,7 +1,7 @@
 import { Router } from 'express';
 import { prisma } from '../lib/prisma.js';
 import { authMiddleware } from '../middleware/auth.js';
-import { signRecordImageFields } from '../lib/upload-sign.js';
+import { signRecordImageFields, attachUploadPaths } from '../lib/upload-sign.js';
 import { checkDailyGenerateQuota } from '../lib/quota.js';
 
 async function hydrateImageMeta(records) {
@@ -253,23 +253,25 @@ router.get('/', authMiddleware, async (req, res) => {
       .filter((m) => m?.url)
       .slice(0, 3);
 
-    return signRecordImageFields({
-      id: record.id,
-      status: record.status,
-      error: record.error,
-      taskType: record.taskType,
-      parentId: record.parentId,
-      createdAt: record.createdAt,
-      updatedAt: record.updatedAt,
-      template: record.template,
-      imageCount,
-      imageSource,
-      imageUrl: thumbs[0] || record.imageUrl || null,
-      imageUrls: thumbs,
-      imageMeta: thumbMeta,
-      outputPreview: preview,
-      output: preview
-    });
+    return attachUploadPaths(
+      signRecordImageFields({
+        id: record.id,
+        status: record.status,
+        error: record.error,
+        taskType: record.taskType,
+        parentId: record.parentId,
+        createdAt: record.createdAt,
+        updatedAt: record.updatedAt,
+        template: record.template,
+        imageCount,
+        imageSource,
+        imageUrl: thumbs[0] || record.imageUrl || null,
+        imageUrls: thumbs,
+        imageMeta: thumbMeta,
+        outputPreview: preview,
+        output: preview
+      })
+    );
   });
 
   res.json({ code: 200, data });

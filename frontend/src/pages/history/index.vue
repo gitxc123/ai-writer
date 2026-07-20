@@ -4,7 +4,7 @@
       <text class="toolbar-title">任务列表</text>
       <view class="toolbar-actions">
         <text class="refresh-btn" @click="resumeStuck">恢复卡住</text>
-        <text class="refresh-btn" @click="loadTasks">刷新</text>
+        <text class="refresh-btn" @click="loadTasks(true)">刷新</text>
       </view>
     </view>
 
@@ -71,9 +71,15 @@ import {
   getTaskIcon,
   getPreviewText
 } from '../../utils/taskStatus.js';
+import {
+  loadRecordsCache,
+  saveRecordsCache
+} from '../../utils/recordsCache.js';
+import { applyImageUrlCacheToRecords } from '../../utils/imageUrlCache.js';
 
 const records = ref([]);
 const loading = ref(false);
+const backgroundLoading = ref(false);
 const userStore = useUserStore();
 
 const IMAGE_TYPE_LABELS = {
@@ -92,8 +98,9 @@ function getThumbs(item) {
       label: IMAGE_TYPE_LABELS[m.type] || ''
     }))
     .filter((t) => {
-      if (seen.has(t.url)) return false;
-      seen.add(t.url);
+      const key = t.url;
+      if (seen.has(key)) return false;
+      seen.add(key);
       return true;
     })
     .slice(0, 3);
@@ -101,17 +108,51 @@ function getThumbs(item) {
   return (item.imageUrls || []).slice(0, 3).map((url) => ({ url, label: '' }));
 }
 
-async function loadTasks() {
+async function ensureUserId() {
+  if (userStore.user?.id) return userStore.user.id;
+  try {
+    await userStore.fetchUser();
+  } catch {
+    // ignore
+  }
+  return userStore.user?.id || null;
+}
+
+async function loadTasks(force = false) {
   if (!userStore.isLogin) return;
-  if (loading.value) return;
-  loading.value = true;
+
+  const userId = await ensureUserId();
+  const hadList = records.value.length > 0;
+
+  if (!force && userId) {
+    const cached = loadRecordsCache(userId);
+    if (cached?.records?.length) {
+      records.value = applyImageUrlCacheToRecords(cached.records, userId);
+    }
+  }
+
+  const showSpinner = force || !records.value.length;
+  if (showSpinner) {
+    if (loading.value) return;
+    loading.value = true;
+  } else if (backgroundLoading.value) {
+    return;
+  } else {
+    backgroundLoading.value = true;
+  }
+
   try {
     const list = await api.getRecords();
-    records.value = Array.isArray(list) ? list : [];
+    const processed = applyImageUrlCacheToRecords(Array.isArray(list) ? list : [], userId);
+    records.value = processed;
+    if (userId) saveRecordsCache(userId, processed);
   } catch (e) {
-    uni.showToast({ title: e.message || '任务加载失败', icon: 'none', duration: 2500 });
+    if (showSpinner || !hadList) {
+      uni.showToast({ title: e.message || '任务加载失败', icon: 'none', duration: 2500 });
+    }
   } finally {
     loading.value = false;
+    backgroundLoading.value = false;
   }
 }
 
@@ -120,7 +161,7 @@ async function resumeStuck() {
   try {
     await api.resumeTasks();
     uni.showToast({ title: '已重新排队' });
-    await loadTasks();
+    await loadTasks(true);
   } catch (e) {
     uni.showToast({ title: e.message, icon: 'none' });
   }
