@@ -236,13 +236,6 @@
       </view>
 
       <view v-if="!isProductIntro && !isStoryboard && imageCount > 0" class="field">
-        <view class="advanced-toggle" @click="imageAdvancedOpen = !imageAdvancedOpen">
-          <text class="advanced-toggle-text">配图高级设置</text>
-          <text class="advanced-toggle-arrow">{{ imageAdvancedOpen ? '收起' : '展开' }}</text>
-        </view>
-      </view>
-
-      <view v-if="!isProductIntro && !isStoryboard && imageCount > 0 && imageAdvancedOpen" class="field">
         <text class="label">配图来源</text>
         <view class="source-row">
           <view
@@ -264,6 +257,16 @@
         </view>
         <text v-if="imageSource === 'ai'" class="source-hint">{{ aiImageSubmitHint }}</text>
         <text v-else class="source-hint">{{ webImageSubmitHint }}</text>
+      </view>
+
+      <view
+        v-if="!isProductIntro && !isStoryboard && imageCount > 0 && imageSource === 'ai'"
+        class="field"
+      >
+        <view class="advanced-toggle" @click="imageAdvancedOpen = !imageAdvancedOpen">
+          <text class="advanced-toggle-text">尺寸与提示词</text>
+          <text class="advanced-toggle-arrow">{{ imageAdvancedOpen ? '收起' : '展开' }}</text>
+        </view>
       </view>
 
       <view
@@ -449,7 +452,6 @@ import {
   toggleSellingPoint
 } from '../../utils/productSellingPoints.js';
 import { promptVipUpgrade } from '../../utils/vipGate.js';
-import { copyTextToClipboard } from '../../utils/clipboard.js';
 
 const template = ref(null);
 const inputs = reactive({});
@@ -867,14 +869,12 @@ function shortTaskId(id) {
   return s.length <= 10 ? s : `${s.slice(0, 8)}…`;
 }
 
-async function copyCurrentTaskId() {
+function copyCurrentTaskId() {
   if (!currentRecordId.value) return;
-  try {
-    await copyTextToClipboard(currentRecordId.value);
-    uni.showToast({ title: '任务 ID 已复制', icon: 'none' });
-  } catch (e) {
-    uni.showToast({ title: e.message || '复制失败', icon: 'none' });
-  }
+  uni.setClipboardData({
+    data: String(currentRecordId.value),
+    success: () => uni.showToast({ title: '任务 ID 已复制', icon: 'none' })
+  });
 }
 
 async function loadTask(id, options = {}) {
@@ -1231,35 +1231,25 @@ async function submitTask() {
     const data = await api.generate(templateId.value, { ...inputs }, options);
     lastSubmitAt.value = Date.now();
     currentRecordId.value = data.taskId;
-    taskStatus.value = data.status;
+    taskStatus.value = data.status || 'pending';
     taskError.value = '';
     output.value = '';
     imageUrls.value = [];
     imageMeta.value = [];
-    const hasImages = isProductIntro.value || imageCount.value > 0;
+    stopPolling();
+
     const tip = data.qualityTip || data.tip || '';
-
-    startPolling(data.taskId);
-
     if (tip) {
       uni.showModal({
         title: '任务已提交',
         content: tip,
         showCancel: false,
-        confirmText: '知道了'
+        confirmText: '查看任务',
+        success: () => goTasks()
       });
     } else {
-      uni.showToast({
-        title: hasImages
-          ? '图文任务已提交，本页可查看进度'
-          : isStoryboard.value
-            ? '分镜任务已提交'
-            : isRewrite.value
-              ? '改写任务已提交'
-              : '文案任务已提交，本页可查看进度',
-        icon: 'none',
-        duration: 2200
-      });
+      uni.showToast({ title: '任务已提交', icon: 'none', duration: 1200 });
+      goTasks();
     }
   } catch (e) {
     if (e.needVip) {
@@ -1282,82 +1272,57 @@ async function copyPack() {
       images: displayImages.value,
       imageBaseOrigin: backendOrigin()
     });
-
-    // 不要先复制纯文本：会盖掉后续图文，导致粘贴只有字没有图
-    if (pack.preferEmbedImages) {
-      uni.showToast({ title: '正在内嵌配图…', icon: 'none', duration: 1500 });
-    }
-
     const result = await copyPlatformPack(pack);
-    const embedded = Number(result.embedded || 0);
-    let tip;
-    if (result.mode === 'text') {
-      tip = `已复制文案。配图未写入剪贴板，请长按预览图保存后手动上传`;
-    } else if (embedded > 0 && (result.mode === 'rich-embed' || result.mode === 'html-embed' || result.mode === 'rich')) {
-      tip =
-        pack.platform.id === 'toutiao'
-          ? `已复制图文（${embedded}张图已内嵌）。粘贴到头条编辑器即可显示`
-          : `已复制${pack.platform.name}图文（${embedded}张图已内嵌），可直接粘贴`;
-    } else if (result.mode === 'rich' || result.mode === 'html') {
-      tip = `已复制${pack.platform.name}图文。若平台只显示链接，请长按配图保存后手动上传`;
-    } else {
-      tip = `已复制。${pack.platform.name}建议用富文本粘贴`;
+    let tip =
+      result.mode === 'rich' || result.mode === 'html'
+        ? `已复制${pack.platform.name}图文（含图片链接），可直接粘贴`
+        : `已复制文本（含图片链接），粘贴到${pack.platform.name}`;
+    if (pack.platform.id === 'toutiao' && pack.title) {
+      tip = `已复制图文链接。标题${charLen(pack.title)}/30字，也可单独点「复制标题」`;
     }
-    if (pack.platform.id === 'toutiao' && pack.title && embedded > 0) {
-      tip = `已内嵌${embedded}张图。标题${charLen(pack.title)}/30字，粘贴到头条编辑器`;
-    }
-    uni.showToast({ title: tip, icon: 'none', duration: 3200 });
+    uni.showToast({ title: tip, icon: 'none', duration: 2800 });
   } catch (e) {
-    if (String(e.message || '').includes('取消')) {
-      uni.showToast({ title: '已取消', icon: 'none' });
-    } else {
-      uni.showToast({ title: e.message || '复制失败', icon: 'none' });
-    }
+    uni.showToast({ title: e.message || '复制失败', icon: 'none' });
   } finally {
     copying.value = false;
   }
 }
 
-async function copyExportTitle() {
+function copyExportTitle() {
   const title = clampToutiaoTitle(exportTitle.value || '');
   if (!title) {
     uni.showToast({ title: '没有可复制的标题', icon: 'none' });
     return;
   }
-  try {
-    await copyTextToClipboard(title);
-    uni.showToast({
-      title: `标题已复制（${charLen(title)}/30字）`,
-      icon: 'none'
-    });
-  } catch (e) {
-    uni.showToast({ title: e.message || '复制失败', icon: 'none' });
-  }
+  uni.setClipboardData({
+    data: title,
+    success: () =>
+      uni.showToast({
+        title: `标题已复制（${charLen(title)}/30字）`,
+        icon: 'none'
+      })
+  });
 }
 
-async function copyTextOnly() {
+function copyTextOnly() {
   // 含 AI 标识与配图免责，避免一键复制剥离合规声明
   const full = String(output.value || '').trim();
-  try {
-    await copyTextToClipboard(full || articleBody.value);
-    uni.showToast({ title: '文案已复制（含标识说明）', icon: 'none' });
-  } catch (e) {
-    uni.showToast({ title: e.message || '复制失败', icon: 'none' });
-  }
+  uni.setClipboardData({
+    data: full || articleBody.value,
+    success: () => uni.showToast({ title: '文案已复制（含标识说明）', icon: 'none' })
+  });
 }
 
-async function copyShotPrompt(shot) {
+function copyShotPrompt(shot) {
   const text = String(shot?.prompt || '').trim();
   if (!text) {
     uni.showToast({ title: '该镜头暂无可复制提示词', icon: 'none' });
     return;
   }
-  try {
-    await copyTextToClipboard(text);
-    uni.showToast({ title: `镜头 ${shot.id} 已复制` });
-  } catch (e) {
-    uni.showToast({ title: e.message || '复制失败', icon: 'none' });
-  }
+  uni.setClipboardData({
+    data: text,
+    success: () => uni.showToast({ title: `镜头 ${shot.id} 已复制` })
+  });
 }
 
 async function retryTask() {

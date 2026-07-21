@@ -39,7 +39,6 @@ import {
   WECHAT_SERVICE_QR,
   WECHAT_SERVICE_TIP
 } from '../../utils/contact.js';
-import { copyTextToClipboard } from '../../utils/clipboard.js';
 
 const tip = WECHAT_SERVICE_TIP;
 const wechatId = WECHAT_SERVICE_ID;
@@ -55,14 +54,12 @@ function previewQr() {
   uni.previewImage({ urls: [qrSrc], current: qrSrc });
 }
 
-async function copyId() {
+function copyId() {
   if (!wechatId) return;
-  try {
-    await copyTextToClipboard(wechatId);
-    uni.showToast({ title: '微信号已复制', icon: 'none' });
-  } catch (e) {
-    uni.showToast({ title: e.message || '复制失败', icon: 'none' });
-  }
+  uni.setClipboardData({
+    data: wechatId,
+    success: () => uni.showToast({ title: '微信号已复制', icon: 'none' })
+  });
 }
 </script>
 

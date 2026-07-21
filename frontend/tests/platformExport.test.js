@@ -45,8 +45,8 @@ describe('safeExportImageUrl', () => {
   });
 });
 
-describe('buildPlatformPack image embed mode', () => {
-  it('embeds public image urls for toutiao and omits bare urls from plain text', () => {
+describe('buildPlatformPack link mode', () => {
+  it('includes image urls in html and plain text for toutiao', () => {
     const pack = buildPlatformPack({
       templateName: '今日头条创作',
       output:
@@ -62,11 +62,11 @@ describe('buildPlatformPack image embed mode', () => {
     });
 
     assert.ok(charLen(pack.title) <= 30);
-    assert.ok(pack.html.includes('https://app.example.com/uploads/local.jpg'));
+    // 优先远程公网地址，便于外站粘贴
+    assert.ok(pack.html.includes('https://cdn.example.com/a.jpg'));
     assert.ok(pack.html.includes('<img'));
-    assert.equal(pack.preferEmbedImages, true);
-    // 纯文本不带裸链，避免头条优先粘贴成「只有链接」
-    assert.equal(pack.text.includes('https://'), false);
+    assert.equal(pack.preferEmbedImages, undefined);
+    assert.ok(pack.text.includes('https://cdn.example.com/a.jpg'));
     assert.ok(pack.text.includes('[图片1'));
   });
 

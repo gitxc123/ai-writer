@@ -78,7 +78,6 @@
 import { onMounted, ref } from 'vue';
 import { api } from '../../utils/request.js';
 import { useUserStore } from '../../stores/user.js';
-import { copyTextToClipboard } from '../../utils/clipboard.js';
 
 const userStore = useUserStore();
 const agentCodes = ref([]);
@@ -139,13 +138,11 @@ function formatDate(v) {
   return `${d.getFullYear()}-${m}-${day} ${hh}:${mm}`;
 }
 
-async function copyText(text) {
-  try {
-    await copyTextToClipboard(text);
-    uni.showToast({ title: '已复制', icon: 'none' });
-  } catch (e) {
-    uni.showToast({ title: e.message || '复制失败', icon: 'none' });
-  }
+function copyText(text) {
+  uni.setClipboardData({
+    data: String(text || ''),
+    success: () => uni.showToast({ title: '已复制', icon: 'none' })
+  });
 }
 
 async function createCodes() {
@@ -166,12 +163,16 @@ async function createCodes() {
     });
     const list = data?.codes || [];
     if (list.length === 1) {
-      try {
-        await copyTextToClipboard(list[0].code);
-        uni.showToast({ title: `已生成并复制：${list[0].code}`, icon: 'none', duration: 2500 });
-      } catch {
-        uni.showToast({ title: `已生成：${list[0].code}`, icon: 'none', duration: 2500 });
-      }
+      await new Promise((resolve) => {
+        uni.setClipboardData({
+          data: list[0].code,
+          success: () => {
+            uni.showToast({ title: `已生成并复制：${list[0].code}`, icon: 'none', duration: 2500 });
+            resolve();
+          },
+          fail: resolve
+        });
+      });
     } else {
       uni.showToast({ title: `已生成 ${list.length} 个激活码`, icon: 'none' });
     }
