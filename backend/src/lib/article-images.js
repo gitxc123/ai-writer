@@ -728,100 +728,82 @@ export const WEB_IMAGE_FOOTER_MARKER = '【配图来源】';
 
 export const AI_TEXT_FOOTER_MARKER = '【AI 生成说明】';
 
+export const COMPACT_NOTE_MARKER = '【说明】';
+
+/** 面向读者的正文标识（写入文稿）；勿与「服务提醒用户」混写 */
+export const AUDIENCE_LABEL_MARKER = '【标识】';
+
+export const IMAGE_LABEL_MARKER = '【配图】';
+
 export const AI_IMAGE_CREDIT = 'AI 生成配图，非现场真实照片';
 
 export const PRODUCT_IMAGE_CREDIT = '基于用户上传产品图的 AI 生成/编辑，非实拍成片';
 
+const FOOTER_MARKERS = [
+  WEB_IMAGE_FOOTER_MARKER,
+  AI_TEXT_FOOTER_MARKER,
+  COMPACT_NOTE_MARKER,
+  AUDIENCE_LABEL_MARKER,
+  IMAGE_LABEL_MARKER,
+  '【声明】'
+];
+
 export function stripComplianceFooters(output) {
   let text = String(output || '');
-  for (const marker of [WEB_IMAGE_FOOTER_MARKER, AI_TEXT_FOOTER_MARKER]) {
+  for (const marker of FOOTER_MARKERS) {
     const withRule = `\n\n---\n${marker}`;
     let idx = text.indexOf(withRule);
     if (idx >= 0) {
       text = text.slice(0, idx).trimEnd();
       continue;
     }
-    idx = text.indexOf(marker);
+    idx = text.indexOf(`\n${marker}`);
     if (idx >= 0) text = text.slice(0, idx).trimEnd();
   }
   return text;
 }
 
+/** 仅面向读者：告知内容含 AI；不含「请核实 / 责任自负」等对作者的服务提醒 */
 export function buildTextAiAttribution() {
   return `
 
 ---
-【AI 生成说明】
-1. 本文正文由人工智能辅助生成，仅供创作参考，不构成新闻供稿、事实认定或专业意见。
-2. 发布前请自行核实事实准确性与合法性，并按目标平台要求对 AI 生成内容作出显著标注。
-3. 因使用或发布本文所产生的法律责任，由内容发布者自行承担。`;
+【标识】本文由人工智能辅助生成。`;
 }
 
+function formatSourceLines(imageMeta, fallbackCredit) {
+  return (imageMeta || [])
+    .map((item, i) => {
+      const caption = item.caption || '配图';
+      const credit = item.credit || fallbackCredit;
+      return `图${i + 1}（${caption}）：${credit}`;
+    })
+    .join('\n');
+}
+
+/** 面向读者的配图标注；版权/授权等对作者的提醒不写入文稿 */
 export function buildWebImageAttribution(imageMeta) {
   if (!imageMeta?.length) return '';
-
-  const sourceLines = imageMeta.map((item, i) => {
-    const caption = item.caption || '配图';
-    const credit = item.credit || '网络公开检索';
-    const link = item.sourceUrl ? `（${item.sourceUrl}）` : '';
-    return `图${i + 1}（${caption}）：${credit}${link}`;
-  });
-
   return `
 
----
-【配图来源】
-${sourceLines.join('\n')}
-
-【免责声明】
-1. 本文配图来自互联网公开检索（含公开网页及图库），仅供内容示意与排版参考，不代表任何官方立场。
-2. 本服务不授予图片版权或使用权；图片版权归原作者、原平台或合法权利人所有。发布前须自行取得授权，或更换为已获授权素材。
-3. 配图可能与正文所述具体事件、时间或地点存在差异，发布前请自行核实图文匹配性。
-4. 如涉及侵权，请通过产品内「投诉与反馈」或联系发布者处理删除；已发布至第三方平台的内容需另行向该平台投诉。
-5. 因使用本文内容及配图所产生的法律责任，由内容发布者自行承担。`;
+【配图】
+${formatSourceLines(imageMeta, '网络公开检索')}`;
 }
 
 export function buildAiImageAttribution(imageMeta) {
   if (!imageMeta?.length) return '';
-
-  const sourceLines = imageMeta.map((item, i) => {
-    const caption = item.caption || '配图';
-    const credit = item.credit || AI_IMAGE_CREDIT;
-    return `图${i + 1}（${caption}）：${credit}`;
-  });
-
   return `
 
----
-【配图来源】
-${sourceLines.join('\n')}
-
-【免责声明】
-1. 本文配图由人工智能生成，仅供内容示意与排版参考，并非真实现场拍摄照片。
-2. 配图中的人物、场景与细节可能与正文所述事件不完全一致，请勿当作新闻纪实图片使用或传播。
-3. 发布前请自行核验目标平台对 AI 生成内容的标注要求，并按规范声明；请保留本服务添加的标识。
-4. 因使用本文内容及配图所产生的法律责任，由内容发布者自行承担。`;
+【配图】
+${formatSourceLines(imageMeta, AI_IMAGE_CREDIT)}`;
 }
 
 export function buildProductImageAttribution(imageMeta) {
   if (!imageMeta?.length) return '';
-
-  const sourceLines = imageMeta.map((item, i) => {
-    const caption = item.caption || '产品配图';
-    const credit = item.credit || PRODUCT_IMAGE_CREDIT;
-    return `图${i + 1}（${caption}）：${credit}`;
-  });
-
   return `
 
----
-【配图来源】
-${sourceLines.join('\n')}
-
-【免责声明】
-1. 本文产品配图基于用户上传素材，由人工智能生成或编辑，并非未声明的实拍广告成片。
-2. 发布前请确认您对上传素材及成片拥有合法权利，并按平台要求标注 AI 生成/编辑内容。
-3. 因使用本文内容及配图所产生的法律责任，由内容发布者自行承担。`;
+【配图】
+${formatSourceLines(imageMeta, PRODUCT_IMAGE_CREDIT)}`;
 }
 
 export function buildImageAttribution(imageSource, imageMeta) {
@@ -831,7 +813,7 @@ export function buildImageAttribution(imageSource, imageMeta) {
   return '';
 }
 
-/** 正文 AI 标识 + 可选配图免责（先剥旧 footer 再重建） */
+/** 正文写入面向读者的标识 + 配图标注（不含对作者的服务提醒） */
 export function withComplianceFooters(output, imageSource, imageMeta) {
   const body = stripComplianceFooters(output);
   let result = body + buildTextAiAttribution();
@@ -843,7 +825,12 @@ export function withComplianceFooters(output, imageSource, imageMeta) {
 export function splitArticleOutput(text) {
   const raw = text || '';
   let cut = -1;
-  for (const marker of [WEB_IMAGE_FOOTER_MARKER, AI_TEXT_FOOTER_MARKER]) {
+  for (const marker of [
+    WEB_IMAGE_FOOTER_MARKER,
+    AI_TEXT_FOOTER_MARKER,
+    COMPACT_NOTE_MARKER,
+    AUDIENCE_LABEL_MARKER
+  ]) {
     const withRule = `\n\n---\n${marker}`;
     const idx = raw.indexOf(withRule);
     if (idx !== -1 && (cut === -1 || idx < cut)) cut = idx;

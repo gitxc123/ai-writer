@@ -88,7 +88,7 @@ describe('buildPlatformPack link mode', () => {
       images: [{ url: 'https://cdn.example.com/a.jpg', sourceType: 'ai', credit: 'AI 生成配图，非现场真实照片' }]
     });
     assert.match(pack.text, /AI 辅助生成/);
-    assert.match(pack.text, /非现场实拍|AI 生成/);
+    assert.match(pack.text, /非实拍|AI 示意|AI生成/);
     assert.ok(pack.text.includes('https://cdn.example.com/a.jpg'));
   });
 });
