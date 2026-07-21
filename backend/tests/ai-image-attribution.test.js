@@ -7,51 +7,40 @@ import {
   buildTextAiAttribution,
   buildWebImageAttribution,
   withComplianceFooters,
-  AI_IMAGE_CREDIT,
-  AUDIENCE_LABEL_MARKER
+  AUTHOR_STATEMENT_AI,
+  AUTHOR_STATEMENT_WEB,
+  AUTHOR_STATEMENT_PRODUCT,
+  AI_IMAGE_CREDIT
 } from '../src/lib/article-images.js';
 
-describe('audience-facing attribution only', () => {
-  it('labels AI images for readers without service-to-author disclaimers', () => {
-    const footer = buildAiImageAttribution([
-      { caption: '垮塌现场示意', credit: AI_IMAGE_CREDIT }
-    ]);
-    assert.match(footer, /【配图】/);
-    assert.match(footer, /AI 生成配图，非现场真实照片/);
-    assert.match(footer, /图1（垮塌现场示意）/);
-    assert.equal(/责任|授权|本服务|请核实|请按平台/.test(footer), false);
+describe('author statements for audience', () => {
+  it('uses formal AI statement', () => {
+    const footer = buildAiImageAttribution([{ caption: '垮塌现场示意', credit: AI_IMAGE_CREDIT }]);
+    assert.match(footer, /【作者声明】/);
+    assert.ok(footer.includes(AUTHOR_STATEMENT_AI));
+    assert.equal(footer.includes('图1'), false);
   });
 
-  it('routes ai source through buildImageAttribution', () => {
-    const footer = buildImageAttribution('ai', [{ caption: '配图' }]);
-    assert.match(footer, /AI 生成/);
+  it('uses formal web statement', () => {
+    const footer = buildWebImageAttribution([{ caption: '现场', credit: '某图库' }]);
+    assert.ok(footer.includes(AUTHOR_STATEMENT_WEB));
+    assert.match(footer, /网络公开检索/);
   });
 
-  it('attributes product images for readers only', () => {
+  it('uses product statement', () => {
     const footer = buildProductImageAttribution([{ caption: '特写' }]);
-    assert.match(footer, /用户上传/);
-    assert.equal(/责任|请确认/.test(footer), false);
+    assert.ok(footer.includes(AUTHOR_STATEMENT_PRODUCT));
   });
 
-  it('lists web image sources without copyright lectures', () => {
-    const footer = buildWebImageAttribution([
-      {
-        caption: '现场',
-        credit: '某图库',
-        sourceUrl: 'https://example.com/very/long/path/to/image?id=12345'
-      }
-    ]);
-    assert.match(footer, /【配图】/);
-    assert.match(footer, /某图库/);
-    assert.equal(footer.includes('https://example.com'), false);
-    assert.equal(/不授予版权|责任由发布者/.test(footer), false);
+  it('routes by imageSource', () => {
+    assert.ok(buildImageAttribution('web', [{ caption: '配图' }]).includes(AUTHOR_STATEMENT_WEB));
+    assert.ok(buildImageAttribution('ai', [{ caption: '配图' }]).includes(AUTHOR_STATEMENT_AI));
   });
 
-  it('adds reader-facing AI label via withComplianceFooters', () => {
+  it('appends only author statement via withComplianceFooters', () => {
     const out = withComplianceFooters('标题\n\n正文', 'ai', [{ caption: '图', credit: AI_IMAGE_CREDIT }]);
-    assert.match(out, new RegExp(AUDIENCE_LABEL_MARKER));
-    assert.match(out, /【配图】/);
-    assert.match(buildTextAiAttribution(), /人工智能辅助生成/);
+    assert.equal(buildTextAiAttribution(), '');
+    assert.ok(out.includes(AUTHOR_STATEMENT_AI));
     assert.equal(/责任由发布者|请核实事实/.test(out), false);
   });
 });

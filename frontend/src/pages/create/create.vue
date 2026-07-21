@@ -351,14 +351,18 @@
       <text v-else class="result-text">{{ articleBody }}</text>
 
       <view v-if="attributionFooter && canCopyResult" class="attribution-box">
-        <view class="attribution-head" @click="attributionOpen = !attributionOpen">
-          <text class="attribution-title">随文标识（给读者）</text>
-          <text class="attribution-toggle">{{ attributionOpen ? '收起' : '展开' }}</text>
-        </view>
-        <text v-if="attributionOpen" class="attribution-text">{{ attributionFooter }}</text>
-        <text v-else class="attribution-preview">{{ attributionPreview }}</text>
+        <text class="attribution-title">作者声明</text>
+        <text class="attribution-text">{{ attributionFooter }}</text>
       </view>
-      <text v-if="canCopyResult" class="publish-reminder">{{ publishReminder }}</text>
+
+      <view v-if="canCopyResult" class="user-notice-box">
+        <text class="user-notice-title">发布须知</text>
+        <view class="user-notice-list">
+          <text v-for="(line, i) in platformUserNotices" :key="'n-' + i" class="user-notice-item">
+            {{ i + 1 }}. {{ line }}
+          </text>
+        </view>
+      </view>
 
       <view v-if="canCopyResult && !isStoryboard" class="btn-row">
         <view
@@ -444,7 +448,7 @@ import { onLoad } from '@dcloudio/uni-app';
 import { api, uploadProductPhoto } from '../../utils/request.js';
 import { useUserStore } from '../../stores/user.js';
 import { getStatusMeta, isRunning } from '../../utils/taskStatus.js';
-import { splitArticleOutput, WEB_IMAGE_SUBMIT_HINT, AI_IMAGE_SUBMIT_HINT, PUBLISH_REMINDER, buildAudienceFacingAppendix, withAudienceFacingOutput } from '../../utils/articleOutput.js';
+import { splitArticleOutput, WEB_IMAGE_SUBMIT_HINT, AI_IMAGE_SUBMIT_HINT, PLATFORM_USER_NOTICES, buildAudienceFacingAppendix, withAudienceFacingOutput } from '../../utils/articleOutput.js';
 import { enrichTemplateFields } from '../../utils/fieldGuides.js';
 import { buildPlatformPack, copyPlatformPack, detectPlatform } from '../../utils/platformExport.js';
 import { clampToutiaoTitle, charLen } from '../../utils/platformLimits.js';
@@ -467,7 +471,6 @@ const imageCount = ref(1);
 const imageSource = ref('ai');
 const customImagePrompts = ref(['']);
 const imageAdvancedOpen = ref(false);
-const attributionOpen = ref(false);
 const showTaskMeta = ref(false);
 const submitting = ref(false);
 
@@ -639,10 +642,6 @@ const attributionFooter = computed(() =>
     legacyFooter: splitArticleOutput(output.value).footer
   })
 );
-const attributionPreview = computed(() => {
-  const t = String(attributionFooter.value || '').replace(/\s+/g, ' ').trim();
-  return t.length > 36 ? `${t.slice(0, 36)}…` : t;
-});
 /** 复制/导出用：正文 + 短标识，不含对作者的免责长文 */
 const exportableOutput = computed(() =>
   withAudienceFacingOutput(output.value, {
@@ -664,7 +663,7 @@ const exportTitle = computed(() => exportPackPreview.value.title || '');
 
 const aiImageSubmitHint = AI_IMAGE_SUBMIT_HINT;
 const webImageSubmitHint = WEB_IMAGE_SUBMIT_HINT;
-const publishReminder = PUBLISH_REMINDER;
+const platformUserNotices = PLATFORM_USER_NOTICES;
 const storyboardShots = computed(() =>
   isStoryboard.value ? parseStoryboardShots(output.value) : []
 );
@@ -1895,27 +1894,10 @@ function goTasks() {
   border-radius: 12rpx;
   border-left: 6rpx solid #e6a23c;
 }
-.attribution-head {
-  display: flex;
-  align-items: center;
-  justify-content: space-between;
-  gap: 16rpx;
-}
 .attribution-title {
   font-size: 24rpx;
   font-weight: 600;
   color: #909399;
-  flex: 1;
-}
-.attribution-toggle {
-  font-size: 24rpx;
-  color: #0a84ff;
-  flex-shrink: 0;
-}
-.attribution-preview {
-  margin-top: 8rpx;
-  font-size: 22rpx;
-  color: #c0c4cc;
   display: block;
 }
 .attribution-text {
@@ -1926,12 +1908,28 @@ function goTasks() {
   white-space: pre-wrap;
   display: block;
 }
-.publish-reminder {
-  display: block;
+.user-notice-box {
   margin-top: 16rpx;
-  font-size: 22rpx;
-  line-height: 1.6;
-  color: #909399;
+  padding: 20rpx 24rpx;
+  background: #fff8f0;
+  border-radius: 12rpx;
+  border-left: 6rpx solid #e6a23c;
+}
+.user-notice-title {
+  font-size: 24rpx;
+  font-weight: 600;
+  color: #b88230;
+  display: block;
+}
+.user-notice-list {
+  margin-top: 12rpx;
+}
+.user-notice-item {
+  display: block;
+  font-size: 24rpx;
+  line-height: 1.7;
+  color: #8a6d3b;
+  margin-top: 6rpx;
 }
 .link-tasks {
   text-align: center;

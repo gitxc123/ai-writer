@@ -733,11 +733,21 @@ export const COMPACT_NOTE_MARKER = '【说明】';
 /** 面向读者的正文标识（写入文稿）；勿与「服务提醒用户」混写 */
 export const AUDIENCE_LABEL_MARKER = '【标识】';
 
-export const IMAGE_LABEL_MARKER = '【配图】';
+export const IMAGE_LABEL_MARKER = '【作者声明】';
 
 export const AI_IMAGE_CREDIT = 'AI 生成配图，非现场真实照片';
 
 export const PRODUCT_IMAGE_CREDIT = '基于用户上传产品图的 AI 生成/编辑，非实拍成片';
+
+/** 写入文稿的【作者声明】（面向观众） */
+export const AUTHOR_STATEMENT_AI =
+  '本文配图均为人工智能生成，并非真实拍摄照片，仅供示意与参考。';
+
+export const AUTHOR_STATEMENT_WEB =
+  '本文配图来源于网络公开检索，其真实性及与正文所述情形是否一致有待核实；图片权利归原作者或原平台所有。如权利人认为侵权，请联系发布者删除。';
+
+export const AUTHOR_STATEMENT_PRODUCT =
+  '本文配图基于上传素材经人工智能生成或编辑，并非未加说明的实拍成片，仅供产品展示参考。';
 
 const FOOTER_MARKERS = [
   WEB_IMAGE_FOOTER_MARKER,
@@ -763,63 +773,59 @@ export function stripComplianceFooters(output) {
   return text;
 }
 
-/** 仅面向读者：告知内容含 AI；不含「请核实 / 责任自负」等对作者的服务提醒 */
+/** 正文不再强制加「AI 辅助生成」总标识；配图侧另有标注时可附加 */
 export function buildTextAiAttribution() {
-  return `
-
----
-【标识】本文由人工智能辅助生成。`;
+  return '';
 }
 
-function formatSourceLines(imageMeta, fallbackCredit) {
-  return (imageMeta || [])
-    .map((item, i) => {
-      const caption = item.caption || '配图';
-      const credit = item.credit || fallbackCredit;
-      return `图${i + 1}（${caption}）：${credit}`;
-    })
-    .join('\n');
+function formatAuthorStatement(imageSource) {
+  if (imageSource === 'web') return AUTHOR_STATEMENT_WEB;
+  if (imageSource === 'product') return AUTHOR_STATEMENT_PRODUCT;
+  return AUTHOR_STATEMENT_AI;
 }
 
-/** 面向读者的配图标注；版权/授权等对作者的提醒不写入文稿 */
+/** 面向观众的作者声明；版权/授权等对创作者的提醒不写入文稿 */
 export function buildWebImageAttribution(imageMeta) {
   if (!imageMeta?.length) return '';
   return `
 
-【配图】
-${formatSourceLines(imageMeta, '网络公开检索')}`;
+【作者声明】
+${AUTHOR_STATEMENT_WEB}`;
 }
 
 export function buildAiImageAttribution(imageMeta) {
   if (!imageMeta?.length) return '';
   return `
 
-【配图】
-${formatSourceLines(imageMeta, AI_IMAGE_CREDIT)}`;
+【作者声明】
+${AUTHOR_STATEMENT_AI}`;
 }
 
 export function buildProductImageAttribution(imageMeta) {
   if (!imageMeta?.length) return '';
   return `
 
-【配图】
-${formatSourceLines(imageMeta, PRODUCT_IMAGE_CREDIT)}`;
+【作者声明】
+${AUTHOR_STATEMENT_PRODUCT}`;
 }
 
 export function buildImageAttribution(imageSource, imageMeta) {
-  if (imageSource === 'web') return buildWebImageAttribution(imageMeta);
-  if (imageSource === 'ai') return buildAiImageAttribution(imageMeta);
-  if (imageSource === 'product') return buildProductImageAttribution(imageMeta);
+  if (!imageMeta?.length) return '';
+  if (imageSource === 'web' || imageSource === 'ai' || imageSource === 'product') {
+    return `
+
+【作者声明】
+${formatAuthorStatement(imageSource)}`;
+  }
   return '';
 }
 
-/** 正文写入面向读者的标识 + 配图标注（不含对作者的服务提醒） */
+/** 仅附加面向读者的配图标注（不再写入「本文由 AI 辅助生成」总标识） */
 export function withComplianceFooters(output, imageSource, imageMeta) {
   const body = stripComplianceFooters(output);
-  let result = body + buildTextAiAttribution();
-  const img = buildImageAttribution(imageSource, imageMeta);
-  if (img) result += img;
-  return result;
+  const img = String(buildImageAttribution(imageSource, imageMeta) || '').trim();
+  if (!img) return body;
+  return `${body}\n\n---\n${img}`;
 }
 
 export function splitArticleOutput(text) {

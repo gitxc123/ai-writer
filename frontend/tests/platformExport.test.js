@@ -83,11 +83,9 @@ describe('buildPlatformPack link mode', () => {
   it('keeps compact compliance note for xiaohongshu', () => {
     const pack = buildPlatformPack({
       templateName: '小红书创作',
-      output:
-        '种草标题\n\n正文一段。\n\n---\n【AI 生成说明】\n1. 本文正文由人工智能辅助生成。',
+      output: '种草标题\n\n正文一段。',
       images: [{ url: 'https://cdn.example.com/a.jpg', sourceType: 'ai', credit: 'AI 生成配图，非现场真实照片' }]
     });
-    assert.match(pack.text, /AI 辅助生成/);
     assert.match(pack.text, /非实拍|AI 示意|AI生成/);
     assert.ok(pack.text.includes('https://cdn.example.com/a.jpg'));
   });

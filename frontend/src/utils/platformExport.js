@@ -236,8 +236,10 @@ export function buildPlatformPack({ templateName, output, images = [], imageBase
     });
   } else if (platform.id === 'xhs') {
     const note = buildCompactComplianceNote({ footer, images: imgs });
-    html += `<p style="color:#888;font-size:12px;margin-top:12px;line-height:1.5;">${escapeHtml(note)}</p>`;
-    text += `\n${note}\n`;
+    if (note) {
+      html += `<p style="color:#888;font-size:12px;margin-top:12px;line-height:1.5;">${escapeHtml(note)}</p>`;
+      text += `\n${note}\n`;
+    }
   }
 
   return {
