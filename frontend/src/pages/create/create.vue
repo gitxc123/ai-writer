@@ -400,10 +400,15 @@
         </text>
       </view>
 
-      <view v-if="imageUrls.length || (isRunning(taskStatus) && imageCount > 0)" class="image-section">
+      <view
+        v-if="imageUrls.length || imagesHydrating || (isRunning(taskStatus) && imageCount > 0)"
+        class="image-section"
+      >
         <text class="result-title">
           文章配图
-          <text v-if="imageCount > 0" class="image-count">（{{ imageUrls.length }}/{{ imageCount }}）</text>
+          <text v-if="imageCount > 0" class="image-count">
+            （{{ imageUrls.length || 0 }}/{{ imageCount }}）
+          </text>
         </text>
         <text v-if="canRegenerateImage" class="result-text muted regen-hint">
           每张最多重生成 {{ imageRegenMax }} 次（不占每日次数）
@@ -411,13 +416,37 @@
         <text v-if="isRunning(taskStatus) && imageUrls.length < imageCount" class="result-text muted">
           配图生成中，请稍候...
         </text>
-        <view class="image-grid">
+        <text v-else-if="imagesHydrating && !imageUrls.length" class="result-text muted">
+          配图加载中…
+        </text>
+        <view v-if="imagesHydrating && !displayImages.length" class="image-grid">
+          <view
+            v-for="n in Math.max(1, Math.min(5, Number(imageCount) || 1))"
+            :key="'ph-' + n"
+            class="image-card"
+          >
+            <view class="image-wrap img-skeleton">
+              <text class="img-load-text">加载中…</text>
+            </view>
+          </view>
+        </view>
+        <view v-else class="image-grid">
           <view v-for="(item, idx) in displayImages" :key="'img-' + (item.slotIndex ?? idx)" class="image-card">
             <view class="image-wrap">
+              <view
+                v-if="!isImageDecoded(item.slotIndex ?? idx)"
+                class="img-load-mask"
+              >
+                <text class="img-load-text">加载中…</text>
+              </view>
               <image
                 class="cover-image"
+                :class="{ 'cover-pending': !isImageDecoded(item.slotIndex ?? idx) }"
                 :src="item.url"
                 mode="widthFix"
+                lazy-load
+                @load="onImageDecoded(item.slotIndex ?? idx)"
+                @error="onImageDecoded(item.slotIndex ?? idx)"
                 @click="previewImage(idx)"
               />
               <view v-if="isImageRegenerating(item.slotIndex ?? idx)" class="img-regen-mask">
@@ -445,7 +474,7 @@
 </template>
 
 <script setup>
-import { ref, reactive, computed, watch, onMounted, onUnmounted } from 'vue';
+import { ref, reactive, computed, watch, onMounted, onUnmounted, nextTick } from 'vue';
 import { onLoad } from '@dcloudio/uni-app';
 import { api, uploadProductPhoto } from '../../utils/request.js';
 import { useUserStore } from '../../stores/user.js';
@@ -472,6 +501,10 @@ const imageUrls = ref([]);
 const imageMeta = ref([]);
 const imageCount = ref(1);
 const imageSource = ref('ai');
+/** 详情页：文案已出、配图 URL 尚未挂上 */
+const imagesHydrating = ref(false);
+/** 每张配图是否已解码完成（按 slotIndex） */
+const imageDecoded = reactive({});
 const customImagePrompts = ref(['']);
 const imageAdvancedOpen = ref(false);
 const showTaskMeta = ref(false);
@@ -902,9 +935,82 @@ function copyCurrentTaskId() {
   });
 }
 
+function isImageDecoded(idx) {
+  return Boolean(imageDecoded[idx]);
+}
+
+function onImageDecoded(idx) {
+  imageDecoded[idx] = true;
+}
+
+function yieldToPaint() {
+  return nextTick().then(
+    () =>
+      new Promise((resolve) => {
+        setTimeout(resolve, 32);
+      })
+  );
+}
+
+function applyRecordImages(record, { poll = false } = {}) {
+  const userId = userStore.user?.id || null;
+  const [cached] = applyImageUrlCacheToRecords(
+    [
+      {
+        imageUrl: record.imageUrl,
+        imageUrls: record.imageUrls || (record.imageUrl ? [record.imageUrl] : []),
+        imageMeta: record.imageMeta || [],
+        imageUrlPath: record.imageUrlPath,
+        imagePaths: record.imagePaths
+      }
+    ],
+    userId
+  );
+  const nextUrls = cached?.imageUrls || record.imageUrls || (record.imageUrl ? [record.imageUrl] : []);
+  const nextMeta = cached?.imageMeta || record.imageMeta || [];
+  const prevUrls = imageUrls.value || [];
+  const prevMeta = imageMeta.value || [];
+
+  const mergedUrls = nextUrls.map((u, i) => {
+    const prev = prevUrls[i];
+    const pa = extractUploadPath(u);
+    const pb = extractUploadPath(prev);
+    if (pa && pb && pa === pb && prev) return prev;
+    return u;
+  });
+  const mergedMeta = nextMeta.map((m, i) => {
+    const prev = prevMeta[i] || {};
+    const raw = m?.url || nextUrls[i] || '';
+    const prevUrl = prev.url || prevUrls[i] || '';
+    const pa = extractUploadPath(raw);
+    const pb = extractUploadPath(prevUrl);
+    const url = pa && pb && pa === pb && prevUrl ? prevUrl : raw;
+    return { ...(m || {}), url };
+  });
+
+  // URL 变化的槽位重置解码状态
+  mergedUrls.forEach((u, i) => {
+    const prev = prevUrls[i];
+    const pa = extractUploadPath(u);
+    const pb = extractUploadPath(prev);
+    if (!(pa && pb && pa === pb && prev)) {
+      delete imageDecoded[i];
+    }
+  });
+
+  imageUrls.value = mergedUrls;
+  imageMeta.value = mergedMeta.length
+    ? mergedMeta
+    : mergedUrls.map((url) => ({ url }));
+  if (!poll) {
+    imageCount.value = record.imageCount ?? imageUrls.value.length ?? 0;
+  }
+}
+
 async function loadTask(id, options = {}) {
   const poll = options.poll === true;
   const viewOnly = Boolean(recordId.value);
+  const progressive = viewOnly && !poll;
   const record = await api.getRecord(id);
 
   // 任务详情页不需要回填创作表单，跳过可省一轮响应式更新
@@ -953,47 +1059,6 @@ async function loadTask(id, options = {}) {
     output.value = record.output || '';
   }
 
-  const userId = userStore.user?.id || null;
-  const [cached] = applyImageUrlCacheToRecords(
-    [
-      {
-        imageUrl: record.imageUrl,
-        imageUrls: record.imageUrls || (record.imageUrl ? [record.imageUrl] : []),
-        imageMeta: record.imageMeta || [],
-        imageUrlPath: record.imageUrlPath,
-        imagePaths: record.imagePaths
-      }
-    ],
-    userId
-  );
-  const nextUrls = cached?.imageUrls || record.imageUrls || (record.imageUrl ? [record.imageUrl] : []);
-  const nextMeta = cached?.imageMeta || record.imageMeta || [];
-  const prevUrls = imageUrls.value || [];
-  const prevMeta = imageMeta.value || [];
-
-  imageUrls.value = nextUrls.map((u, i) => {
-    const prev = prevUrls[i];
-    const pa = extractUploadPath(u);
-    const pb = extractUploadPath(prev);
-    if (pa && pb && pa === pb && prev) return prev;
-    return u;
-  });
-  imageMeta.value = nextMeta.map((m, i) => {
-    const prev = prevMeta[i] || {};
-    const raw = m?.url || nextUrls[i] || '';
-    const prevUrl = prev.url || prevUrls[i] || '';
-    const pa = extractUploadPath(raw);
-    const pb = extractUploadPath(prevUrl);
-    const url = pa && pb && pa === pb && prevUrl ? prevUrl : raw;
-    return { ...(m || {}), url };
-  });
-  if (!imageMeta.value.length && imageUrls.value.length) {
-    imageMeta.value = imageUrls.value.map((url) => ({ url }));
-  }
-  if (!poll) {
-    imageCount.value = record.imageCount ?? imageUrls.value.length ?? 0;
-  }
-
   currentRecordId.value = record.id;
   taskStatus.value = record.status;
   taskError.value = record.error || '';
@@ -1004,6 +1069,20 @@ async function loadTask(id, options = {}) {
   if (record.imageRegen?.max) {
     imageRegenMax.value = Number(record.imageRegen.max) || 3;
   }
+
+  const hasImages =
+    (Array.isArray(record.imageUrls) && record.imageUrls.length > 0) ||
+    Boolean(record.imageUrl) ||
+    (Array.isArray(record.imageMeta) && record.imageMeta.some((m) => m?.url));
+
+  if (progressive && hasImages) {
+    imagesHydrating.value = true;
+    await yieldToPaint();
+  }
+
+  applyRecordImages(record, { poll });
+  imagesHydrating.value = false;
+
   if (Array.isArray(record.imageRegen?.remaining)) {
     imageRegenRemainingList.value = record.imageRegen.remaining.map((n) =>
       Math.max(0, Number(n) || 0)
@@ -1017,7 +1096,7 @@ async function loadTask(id, options = {}) {
   return record;
 }
 
-/** 用列表缓存先铺一帧，避免等完整 GET 时白屏 */
+/** 用列表缓存先铺文案/状态，配图等完整接口再挂，避免抢首屏 */
 function applyListCacheSnapshot(id) {
   const userId = userStore.user?.id || null;
   if (!userId || !id) return false;
@@ -1039,23 +1118,14 @@ function applyListCacheSnapshot(id) {
   output.value = hit.output || hit.outputPreview || '';
   imageCount.value = hit.imageCount ?? 0;
   imageSource.value = hit.imageSource === 'web' ? 'web' : 'ai';
-
-  const [withUrls] = applyImageUrlCacheToRecords(
-    [
-      {
-        imageUrl: hit.imageUrl,
-        imageUrls: hit.imageUrls || (hit.imageUrl ? [hit.imageUrl] : []),
-        imageMeta: hit.imageMeta || [],
-        imageUrlPath: hit.imageUrlPath,
-        imagePaths: hit.imagePaths
-      }
-    ],
-    userId
-  );
-  imageUrls.value = withUrls?.imageUrls || [];
-  imageMeta.value = withUrls?.imageMeta?.length
-    ? withUrls.imageMeta
-    : imageUrls.value.map((url) => ({ url }));
+  const expectImgs =
+    imageCount.value > 0 ||
+    Boolean(hit.imageUrls?.length) ||
+    Boolean(hit.imageUrl);
+  if (expectImgs) {
+    imagesHydrating.value = true;
+    // 不清空已有图；首次进入通常为空，显示骨架
+  }
   return true;
 }
 
@@ -1887,6 +1957,37 @@ function goTasks() {
 }
 .image-wrap {
   position: relative;
+  min-height: 120rpx;
+}
+.img-skeleton {
+  min-height: 280rpx;
+  background: #f0f2f5;
+  border-radius: 12rpx;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+.img-load-mask {
+  position: absolute;
+  left: 0;
+  right: 0;
+  top: 0;
+  bottom: 0;
+  z-index: 1;
+  min-height: 200rpx;
+  background: #f0f2f5;
+  border-radius: 12rpx;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+.img-load-text {
+  font-size: 24rpx;
+  color: #909399;
+}
+.cover-image.cover-pending {
+  opacity: 0.01;
+  min-height: 200rpx;
 }
 .img-regen-mask {
   position: absolute;
@@ -1894,6 +1995,7 @@ function goTasks() {
   right: 0;
   top: 0;
   bottom: 0;
+  z-index: 2;
   background: rgba(0, 0, 0, 0.45);
   display: flex;
   align-items: center;
