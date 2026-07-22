@@ -3,7 +3,6 @@
     <view class="form">
       <input v-model="phone" class="input" type="number" maxlength="11" placeholder="手机号" />
       <input v-model="password" class="input" password placeholder="密码（至少6位）" />
-      <input v-model="inviteCode" class="input" placeholder="邀请码（可不填，代理请用卖码）" />
 
       <view class="agree-row" @click="agreed = !agreed">
         <view class="checkbox" :class="{ on: agreed }">{{ agreed ? '✓' : '' }}</view>
@@ -32,7 +31,6 @@ import { useUserStore } from '../../stores/user.js';
 
 const phone = ref('');
 const password = ref('');
-const inviteCode = ref('');
 const agreed = ref(false);
 const ageOk = ref(false);
 const submitting = ref(false);
@@ -76,7 +74,7 @@ async function handleRegister() {
 
   submitting.value = true;
   try {
-    await userStore.register(phone.value, password.value, inviteCode.value.trim() || undefined, {
+    await userStore.register(phone.value, password.value, {
       acceptedTerms: true,
       ageConfirmed: true
     });

@@ -24,8 +24,11 @@
           <text class="badge">{{ plan.badge }}</text>
         </view>
         <view class="price-row">
-          <text class="currency">¥</text>
-          <text class="price">{{ plan.price }}</text>
+          <text class="price-label">官方售价</text>
+          <view class="price-num">
+            <text class="currency">¥</text>
+            <text class="price">{{ plan.price }}</text>
+          </view>
         </view>
       </view>
       <text class="plan-desc">{{ plan.desc }}</text>
@@ -34,33 +37,14 @@
       </view>
     </view>
 
-    <view class="agent-card">
-      <view class="plan-top">
-        <view class="plan-name-row">
-          <text class="plan-name">成为代理</text>
-          <text class="badge agent-badge">高分成</text>
-        </view>
-        <text class="agent-rate">50% 盈利分成</text>
-      </view>
-      <text class="plan-desc">
-        不止卖工具：永久解锁本产品全部创作能力，卖出会员激活码还可拿约 50% 盈利分成——自己用、帮别人开通，双重收益。
-      </text>
-      <view class="features">
-        <text class="feat">· 永久享有本工具全部创作能力（模板、图文、配图等）</text>
-        <text class="feat">· 卖码结算约 50% 盈利分成，多推多赚</text>
-        <text class="feat">· 支持发展推广伙伴，一起做大业绩</text>
-        <text class="feat">· 联系客服开通即可</text>
-      </view>
-      <view class="contact-btn" @click="goContact">联系客服开通代理</view>
-    </view>
-
     <view class="pay-bar">
       <view class="pay-info">
+        <text class="price-label">官方售价</text>
         <text class="pay-amount">¥{{ currentPlan?.price ?? '-' }}</text>
       </view>
       <view class="pay-btn" @click="onBottomAction">联系客服</view>
     </view>
-    <text class="pay-off-tip">各档会员与代理均不支持在线支付。请联系客服开通，或使用激活码；虚拟服务一经售出概不退款，详见用户协议。</text>
+    <text class="pay-off-tip">各档会员均不支持在线支付。请联系客服开通，或使用激活码；虚拟服务一经售出概不退款，详见用户协议。</text>
   </view>
 </template>
 
@@ -168,7 +152,6 @@ function onBottomAction() {
   border-color: #9a6b2f;
   box-shadow: 0 0 0 2rpx rgba(154, 107, 47, 0.25);
 }
-/* 套餐背景：试用 → 月卡 → 年卡 → 永久 → 代理，逐级更厚重 */
 .plan.trial {
   background: #f7f8fa;
   border-color: #e4e7ed;
@@ -189,59 +172,29 @@ function onBottomAction() {
   color: #9a6b2f;
 }
 .plan.lifetime {
-  background: linear-gradient(155deg, #f7e8c8 0%, #e4c48a 55%, #d4a85c 100%);
-  border-color: #c4923a;
+  background: linear-gradient(160deg, #fffef9 0%, #f7efd8 55%, #f0e4c4 100%);
+  border-color: #e0c98a;
 }
-.plan.lifetime .plan-name,
-.plan.lifetime .plan-desc,
-.plan.lifetime .feat {
+.plan.lifetime .plan-name {
   color: #3d2a12;
 }
+.plan.lifetime .plan-desc,
+.plan.lifetime .feat {
+  color: #6b5428;
+}
 .plan.lifetime .badge {
-  color: #5c3d12;
-  background: rgba(255, 255, 255, 0.45);
+  color: #8a6420;
+  background: rgba(201, 162, 39, 0.16);
 }
 .plan.lifetime .price-row {
-  color: #5c3d12;
+  color: #9a6b2f;
 }
 .plan.lifetime.active {
-  border-color: #8a6420;
-  box-shadow: 0 0 0 2rpx rgba(138, 100, 32, 0.25);
+  border-color: #c9a227;
+  box-shadow: 0 0 0 2rpx rgba(201, 162, 39, 0.28);
 }
-.agent-card {
-  background: linear-gradient(155deg, #2a241c 0%, #1a1510 45%, #0f0d0b 100%);
-  border-radius: 16rpx;
-  padding: 28rpx;
-  margin-bottom: 20rpx;
-  border: 2rpx solid #c9a227;
-}
-.agent-card .plan-name,
-.agent-card .plan-desc,
-.agent-card .feat {
-  color: #f3e6c8;
-}
-.agent-card .plan-desc,
-.agent-card .feat {
-  color: rgba(243, 230, 200, 0.82);
-}
-.agent-card .badge.agent-badge {
-  color: #1a1510;
-  background: linear-gradient(90deg, #f0d78c, #c9a227);
-}
-.agent-rate {
-  font-size: 28rpx;
-  font-weight: 700;
-  color: #f0d78c;
-}
-.contact-btn {
-  margin-top: 20rpx;
-  background: linear-gradient(90deg, #f0d78c, #c9a227);
-  color: #1a1510;
-  text-align: center;
-  padding: 20rpx;
-  border-radius: 999rpx;
-  font-size: 28rpx;
-  font-weight: 600;
+.plan.lifetime .price-label {
+  color: rgba(154, 107, 47, 0.7);
 }
 .plan-top {
   display: flex;
@@ -266,8 +219,19 @@ function onBottomAction() {
 }
 .price-row {
   display: flex;
-  align-items: baseline;
+  flex-direction: column;
+  align-items: flex-end;
   color: #e6a23c;
+}
+.price-label {
+  font-size: 20rpx;
+  color: #909399;
+  line-height: 1.2;
+  margin-bottom: 4rpx;
+}
+.price-num {
+  display: flex;
+  align-items: baseline;
 }
 .currency {
   font-size: 24rpx;
@@ -276,6 +240,9 @@ function onBottomAction() {
   font-size: 48rpx;
   font-weight: 700;
   line-height: 1;
+}
+.plan.yearly .price-label {
+  color: rgba(154, 107, 47, 0.75);
 }
 .plan-desc {
   display: block;
@@ -307,6 +274,11 @@ function onBottomAction() {
 }
 .pay-info {
   flex: 1;
+  display: flex;
+  flex-direction: column;
+}
+.pay-info .price-label {
+  margin-bottom: 2rpx;
 }
 .pay-amount {
   font-size: 36rpx;

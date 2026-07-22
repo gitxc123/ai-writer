@@ -8,8 +8,7 @@ import {
   resolveActivationExpiry,
   getCodePlanPreset,
   CODE_PLAN_PRESETS,
-  canIssueActivationCodes,
-  genInviteCode
+  canIssueActivationCodes
 } from './membership.js';
 
 const CODE_CHARS = 'ABCDEFGHJKLMNPQRSTUVWXYZ23456789';
@@ -43,13 +42,12 @@ function statusLabel(status) {
 export async function ensureCodeIssuerPrivileges(phone = '17682160819') {
   const user = await prisma.user.findUnique({ where: { phone: String(phone) } });
   if (!user) return null;
-  if (user.isAgent && user.inviteCode) return user;
+  if (user.isAgent) return user;
   return prisma.user.update({
     where: { id: user.id },
     data: {
       isAgent: true,
       agentRate: user.agentRate > 0 ? user.agentRate : 0.5,
-      inviteCode: user.inviteCode || genInviteCode(),
       ...(user.memberPlan === 'none' || !user.memberPlan
         ? { memberPlan: 'lifetime', memberExpireAt: null }
         : {})

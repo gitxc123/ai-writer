@@ -102,14 +102,13 @@ export const api = {
         acceptedTerms: opts.acceptedTerms !== false
       }
     }),
-  register: (phone, password, inviteCode, opts = {}) =>
+  register: (phone, password, opts = {}) =>
     request({
       url: '/auth/register',
       method: 'POST',
       data: {
         phone,
         password,
-        inviteCode,
         acceptedTerms: !!opts.acceptedTerms,
         ageConfirmed: !!opts.ageConfirmed
       }

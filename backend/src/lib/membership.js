@@ -1,7 +1,7 @@
 /**
  * 会员套餐定义
- * trial / monthly / yearly / lifetime（纯永久会员，不含代理）
- * 代理身份不在线开通：联系客服，永久获得 50% 分成（卖码结算）
+ * trial / monthly / yearly / lifetime（成为代理：永久权益 + 固定比例返现）
+ * 代理档不支持在线自助支付，联系客服开通
  */
 export const MEMBER_PLANS = [
   {
@@ -33,34 +33,37 @@ export const MEMBER_PLANS = [
   },
   {
     id: 'lifetime',
-    name: '永久会员',
+    name: '成为代理',
     price: 499,
     days: 0, // 0 = 永久
-    badge: '永久',
-    desc: '一次开通，长期畅用全部创作能力',
+    badge: '代理',
+    isAgent: true,
+    agentRate: 0.5,
+    desc: '享受全部创作权益的永久使用权，并终身获得固定比例返现',
     features: [
-      '永久会员全部权益',
-      '全部模板与图文能力',
-      '每日最多 30 次创作',
-      '单次最多 5 张配图',
-      '适合个人长期创作使用'
+      '永久解锁本产品全部创作能力',
+      '全部模板、图文生成与配图能力',
+      '每日最多 30 次创作，单次最多 5 张配图',
+      '终身固定比例返现（卖码结算）',
+      '联系客服开通'
     ]
   }
 ];
 
-/** 代理说明（展示用，不可在线自助购买） */
+/** 与「成为代理」档一致，供配置接口返回 */
 export const AGENT_PROGRAM = {
   id: 'agent',
   name: '成为代理',
-  badge: '高分成',
+  badge: '代理',
   rate: 0.5,
-  desc: '永久解锁全部创作能力，卖码还可获约 50% 盈利分成；联系客服开通',
+  price: 499,
+  desc: '享受全部创作权益的永久使用权，并终身获得固定比例返现',
   features: [
-    '永久享有本工具全部创作能力',
-    '卖码结算约 50% 盈利分成，多推多赚',
-    '支持发展推广伙伴，不限制拓展',
-    '由运营发放激活码库存，线下结算',
-    '联系客服即可咨询开通'
+    '永久解锁本产品全部创作能力',
+    '全部模板、图文生成与配图能力',
+    '每日最多 30 次创作，单次最多 5 张配图',
+    '终身固定比例返现（卖码结算）',
+    '联系客服开通'
   ]
 };
 
@@ -84,19 +87,15 @@ export function isMemberActive(user) {
 
 export function formatMemberLabel(user) {
   if (!user) return '未开通';
-  if (!isMemberActive(user)) return '已过期';
-  if (user.memberPlan === 'lifetime') return user.isAgent ? '永久会员·代理' : '永久会员';
-  const map = { trial: '试用会员', monthly: '包月会员', yearly: '包年会员', code: '激活码会员' };
-  return map[user.memberPlan] || '会员';
-}
-
-export function genInviteCode() {
-  const chars = 'ABCDEFGHJKLMNPQRSTUVWXYZ23456789';
-  let code = '';
-  for (let i = 0; i < 6; i += 1) {
-    code += chars[Math.floor(Math.random() * chars.length)];
+  if (isMemberActive(user)) {
+    if (user.memberPlan === 'lifetime' || user.isAgent) return '代理';
+    const map = { trial: '试用会员', monthly: '包月会员', yearly: '包年会员', code: '激活码会员' };
+    return map[user.memberPlan] || '会员';
   }
-  return code;
+  // 从未开通过（默认 none / 空）与曾经开通过但已到期区分开
+  const plan = String(user.memberPlan || 'none').trim();
+  if (!plan || plan === 'none') return '未开通';
+  return '已过期';
 }
 
 /** 激活码对应的四档会员 */

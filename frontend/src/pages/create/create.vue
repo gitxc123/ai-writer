@@ -6,6 +6,8 @@
       <text class="desc">{{ template.description }}</text>
     </view>
 
+    <view v-if="recordId && detailLoading && !output && !taskStatus" class="empty-hint">任务加载中…</view>
+
     <view v-if="taskStatus" class="status-card">
       <text class="status-label">任务状态</text>
       <text class="status-value" :class="statusClass">{{ statusLabel }}</text>
@@ -450,11 +452,12 @@ import { useUserStore } from '../../stores/user.js';
 import { getStatusMeta, isRunning } from '../../utils/taskStatus.js';
 import { splitArticleOutput, WEB_IMAGE_SUBMIT_HINT, AI_IMAGE_SUBMIT_HINT, PLATFORM_USER_NOTICES, buildAudienceFacingAppendix, withAudienceFacingOutput } from '../../utils/articleOutput.js';
 import { enrichTemplateFields } from '../../utils/fieldGuides.js';
-import { buildPlatformPack, copyPlatformPack, detectPlatform } from '../../utils/platformExport.js';
+import { buildPlatformPack, copyPlatformPack, detectPlatform, pickExportTitle } from '../../utils/platformExport.js';
 import { clampToutiaoTitle, charLen } from '../../utils/platformLimits.js';
 import { toUserErrorMessage } from '../../utils/userError.js';
 import { parseStoryboardShots } from '../../utils/storyboardShots.js';
 import { applyImageUrlCacheToRecords, extractUploadPath } from '../../utils/imageUrlCache.js';
+import { loadRecordsCache } from '../../utils/recordsCache.js';
 import {
   getSellingPointOptions,
   splitSellingPoints,
@@ -514,6 +517,7 @@ const regeneratingIndexes = ref([]);
 const imageRegenMax = ref(3);
 const imageRegenRemainingList = ref([]);
 const pageReady = ref(false);
+const detailLoading = ref(false);
 const loadError = ref('');
 const productPhotos = ref([]);
 const userStore = useUserStore();
@@ -634,12 +638,13 @@ const displayImages = computed(() => {
   return out;
 });
 
-const articleBody = computed(() => splitArticleOutput(output.value).body);
+const articleParts = computed(() => splitArticleOutput(output.value));
+const articleBody = computed(() => articleParts.value.body);
 const attributionFooter = computed(() =>
   buildAudienceFacingAppendix({
     imageMeta: imageMeta.value,
     imageSource: imageSource.value,
-    legacyFooter: splitArticleOutput(output.value).footer
+    legacyFooter: articleParts.value.footer
   })
 );
 /** 复制/导出用：正文 + 短标识，不含对作者的免责长文 */
@@ -650,16 +655,13 @@ const exportableOutput = computed(() =>
   })
 );
 
-const exportPackPreview = computed(() =>
-  buildPlatformPack({
-    templateName: template.value?.name || '',
-    output: exportableOutput.value || '',
-    images: displayImages.value,
-    imageBaseOrigin: backendOrigin()
-  })
-);
+const platformInfo = computed(() => detectPlatform(template.value?.name || ''));
 
-const exportTitle = computed(() => exportPackPreview.value.title || '');
+/** 仅头条展示「复制标题」时轻量取标题，避免进详情就 buildPlatformPack */
+const exportTitle = computed(() => {
+  if (platformInfo.value?.id !== 'toutiao') return '';
+  return pickExportTitle(exportableOutput.value || '', 'toutiao');
+});
 
 const aiImageSubmitHint = AI_IMAGE_SUBMIT_HINT;
 const webImageSubmitHint = WEB_IMAGE_SUBMIT_HINT;
@@ -667,7 +669,6 @@ const platformUserNotices = PLATFORM_USER_NOTICES;
 const storyboardShots = computed(() =>
   isStoryboard.value ? parseStoryboardShots(output.value) : []
 );
-const platformInfo = computed(() => detectPlatform(template.value?.name || ''));
 
 const progressHint = computed(() => {
   if (!isRunning(taskStatus.value)) return '';
@@ -903,9 +904,11 @@ function copyCurrentTaskId() {
 
 async function loadTask(id, options = {}) {
   const poll = options.poll === true;
+  const viewOnly = Boolean(recordId.value);
   const record = await api.getRecord(id);
 
-  if (!poll) {
+  // 任务详情页不需要回填创作表单，跳过可省一轮响应式更新
+  if (!poll && !viewOnly) {
     template.value = record.template;
     Object.keys(inputs).forEach((k) => delete inputs[k]);
     Object.assign(inputs, record.input || {});
@@ -932,6 +935,18 @@ async function loadTask(id, options = {}) {
     } else {
       resizeCustomImagePrompts(n);
     }
+  } else if (!poll && viewOnly) {
+    template.value = record.template
+      ? {
+          id: record.template.id,
+          name: record.template.name,
+          icon: record.template.icon,
+          description: record.template.description,
+          fields: Array.isArray(record.template.fields) ? record.template.fields : []
+        }
+      : template.value;
+    imageCount.value = record.imageCount ?? imageCount.value ?? 0;
+    imageSource.value = record.imageSource === 'web' ? 'web' : imageSource.value || 'ai';
   }
 
   if (!poll || record.output !== output.value) {
@@ -1000,6 +1015,48 @@ async function loadTask(id, options = {}) {
     });
   }
   return record;
+}
+
+/** 用列表缓存先铺一帧，避免等完整 GET 时白屏 */
+function applyListCacheSnapshot(id) {
+  const userId = userStore.user?.id || null;
+  if (!userId || !id) return false;
+  const cached = loadRecordsCache(userId);
+  const hit = cached?.records?.find((r) => r.id === id);
+  if (!hit) return false;
+
+  template.value = hit.template
+    ? {
+        name: hit.template.name,
+        icon: hit.template.icon,
+        description: hit.template.description || '',
+        fields: []
+      }
+    : template.value;
+  taskStatus.value = hit.status || '';
+  taskError.value = hit.error || '';
+  currentRecordId.value = hit.id;
+  output.value = hit.output || hit.outputPreview || '';
+  imageCount.value = hit.imageCount ?? 0;
+  imageSource.value = hit.imageSource === 'web' ? 'web' : 'ai';
+
+  const [withUrls] = applyImageUrlCacheToRecords(
+    [
+      {
+        imageUrl: hit.imageUrl,
+        imageUrls: hit.imageUrls || (hit.imageUrl ? [hit.imageUrl] : []),
+        imageMeta: hit.imageMeta || [],
+        imageUrlPath: hit.imageUrlPath,
+        imagePaths: hit.imagePaths
+      }
+    ],
+    userId
+  );
+  imageUrls.value = withUrls?.imageUrls || [];
+  imageMeta.value = withUrls?.imageMeta?.length
+    ? withUrls.imageMeta
+    : imageUrls.value.map((url) => ({ url }));
+  return true;
 }
 
 function isImageRegenerating(idx) {
@@ -1106,8 +1163,11 @@ onMounted(async () => {
 
   try {
     if (recordId.value) {
-      const record = await loadTask(recordId.value);
+      detailLoading.value = true;
       pageReady.value = true;
+      applyListCacheSnapshot(recordId.value);
+      const record = await loadTask(recordId.value);
+      detailLoading.value = false;
       if (isRunning(record.status)) startPolling(recordId.value);
       return;
     }
@@ -1159,6 +1219,7 @@ onMounted(async () => {
     pageReady.value = true;
     loadHotTopics();
   } catch (e) {
+    detailLoading.value = false;
     loadError.value = e.message || '加载失败';
     pageReady.value = true;
     uni.showToast({ title: loadError.value, icon: 'none' });
@@ -1470,6 +1531,12 @@ function goTasks() {
   font-size: 26rpx;
   color: #fa3534;
   margin-bottom: 16rpx;
+}
+.empty-hint {
+  text-align: center;
+  color: #909399;
+  font-size: 28rpx;
+  padding: 80rpx 0;
 }
 .field {
   margin-bottom: 28rpx;

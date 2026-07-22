@@ -4,6 +4,8 @@ import { authMiddleware } from '../middleware/auth.js';
 import { signRecordImageFields, attachUploadPaths } from '../lib/upload-sign.js';
 import { checkDailyGenerateQuota } from '../lib/quota.js';
 import { pruneUserRecordsToLimit, USER_RECORD_LIST_LIMIT } from '../lib/retention.js';
+import { getRetryPlan, buildImageRegenInfo } from '../lib/task-meta.js';
+import { getRegeneratingIndexes } from '../lib/regen-slots.js';
 
 async function hydrateImageMeta(records) {
   if (!records.length) return records;
@@ -287,15 +289,37 @@ router.get('/', authMiddleware, async (req, res) => {
 router.get('/:id', authMiddleware, async (req, res) => {
   let record = await prisma.generationRecord.findFirst({
     where: { id: req.params.id, userId: req.userId },
-    include: { template: true }
+    include: {
+      template: {
+        select: {
+          id: true,
+          name: true,
+          icon: true,
+          description: true,
+          fields: true,
+          categoryId: true
+        }
+      }
+    }
   });
   if (!record) {
     return res.status(404).json({ code: 404, message: '任务不存在' });
   }
-  [record] = await hydrateImageMeta([record]);
+  // Prisma 已带回 imageMeta 时跳过二次查询
+  if (record.imageMeta == null) {
+    [record] = await hydrateImageMeta([record]);
+  }
 
   const input = JSON.parse(record.input || '{}');
-  const { imageCount: _ic, imageSize: _is, imageSource: _src, customImagePrompt: _cip, customImagePrompts: _cips, productPhotos: _pp, ...formInputs } = input;
+  const {
+    imageCount: _ic,
+    imageSize: _is,
+    imageSource: _src,
+    customImagePrompt: _cip,
+    customImagePrompts: _cips,
+    productPhotos: _pp,
+    ...formInputs
+  } = input;
   let imageUrls = [];
   let imageMeta = [];
   try {
@@ -309,9 +333,6 @@ router.get('/:id', authMiddleware, async (req, res) => {
     imageMeta = [];
   }
 
-  const { getRetryPlan, getRegeneratingIndexes, buildImageRegenInfo } = await import(
-    '../lib/task-runner.js'
-  );
   const retry = getRetryPlan({
     ...record,
     imageUrls: JSON.stringify(imageUrls),
@@ -320,7 +341,15 @@ router.get('/:id', authMiddleware, async (req, res) => {
 
   const data = attachUploadPaths(
     signRecordImageFields({
-      ...record,
+      id: record.id,
+      status: record.status,
+      error: record.error,
+      output: record.output,
+      taskType: record.taskType,
+      parentId: record.parentId,
+      createdAt: record.createdAt,
+      updatedAt: record.updatedAt,
+      imageUrl: record.imageUrl,
       input: formInputs,
       imageCount: Number(input.imageCount) || imageUrls.length || 0,
       imageSize: input.imageSize || record.imageSize || 'landscape',

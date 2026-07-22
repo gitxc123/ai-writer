@@ -13,7 +13,7 @@ function truthyFlag(v) {
 }
 
 router.post('/register', async (req, res) => {
-  const { phone, password, nickName, inviteCode, acceptedTerms, ageConfirmed } = req.body || {};
+  const { phone, password, nickName, acceptedTerms, ageConfirmed } = req.body || {};
   if (!phone || !password) {
     return res.status(400).json({ code: 400, message: '手机号和密码不能为空' });
   }
@@ -35,22 +35,13 @@ router.post('/register', async (req, res) => {
     return res.status(400).json({ code: 400, message: '手机号已注册' });
   }
 
-  let invitedBy = null;
-  if (inviteCode) {
-    const agent = await prisma.user.findFirst({
-      where: { inviteCode: String(inviteCode).trim().toUpperCase(), isAgent: true }
-    });
-    if (agent) invitedBy = agent.id;
-  }
-
   const passwordHash = await bcrypt.hash(password, 10);
   const now = new Date();
   const user = await prisma.user.create({
     data: {
       phone,
       passwordHash,
-      nickName: nickName || `用户${phone.slice(-4)}`,
-      invitedBy
+      nickName: nickName || `用户${phone.slice(-4)}`
     }
   });
   const avatar = await assignAvatarOnCreate(prisma, user.id);

@@ -8,7 +8,6 @@ import {
   calcExpireAt,
   isMemberActive,
   formatMemberLabel,
-  genInviteCode,
   ACTIVATION_CODE_DAYS,
   canIssueActivationCodes,
   CODE_PLAN_PRESETS
@@ -51,7 +50,6 @@ function publicUser(user) {
     isAgent: !!user.isAgent,
     canIssueCodes: canIssueActivationCodes(user),
     agentRate: user.isAgent ? Number(user.agentRate || 0.5) : 0,
-    inviteCode: user.inviteCode || '',
     createdAt: user.createdAt
   };
 }
@@ -197,9 +195,6 @@ router.post('/pay', authMiddleware, async (req, res) => {
     if (plan.isAgent) {
       updateData.isAgent = true;
       updateData.agentRate = plan.agentRate ?? 0.5;
-      if (!user.inviteCode) {
-        updateData.inviteCode = genInviteCode();
-      }
     }
 
     await prisma.user.update({ where: { id: req.userId }, data: updateData });
@@ -207,26 +202,6 @@ router.post('/pay', authMiddleware, async (req, res) => {
       where: { id: orderId },
       data: { status: 'paid', paidAt: now }
     });
-
-    // 邀请人是代理 → 分成
-    if (user.invitedBy) {
-      const agent = await prisma.user.findUnique({ where: { id: user.invitedBy } });
-      if (agent?.isAgent) {
-        const rate = Number(agent.agentRate || 0.5);
-        const amount = Math.round(Number(order.amount) * rate * 100) / 100;
-        await prisma.agentCommission.create({
-          data: {
-            agentId: agent.id,
-            fromUserId: user.id,
-            orderId: order.id,
-            orderAmount: order.amount,
-            rate,
-            amount,
-            status: 'settled'
-          }
-        });
-      }
-    }
 
     const fresh = await prisma.user.findUnique({ where: { id: req.userId } });
     res.json({
@@ -360,13 +335,11 @@ router.post('/admin/codes', requireAdmin, async (req, res) => {
       return res.status(404).json({ code: 404, message: '未找到代理用户，请先确认手机号已注册' });
     }
     if (!agent.isAgent) {
-      const inviteCode = agent.inviteCode || genInviteCode();
       agent = await prisma.user.update({
         where: { id: agent.id },
         data: {
           isAgent: true,
-          agentRate: agent.agentRate > 0 ? agent.agentRate : 0.5,
-          inviteCode
+          agentRate: agent.agentRate > 0 ? agent.agentRate : 0.5
         }
       });
     }

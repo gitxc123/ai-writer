@@ -78,6 +78,14 @@ function pickTitleAndBody(body = '') {
   return { title, paras: rest };
 }
 
+/** 轻量取导出标题（进详情不跑完整图文打包） */
+export function pickExportTitle(output = '', platformId = '') {
+  const body = splitArticleOutput(String(output || '')).body || String(output || '');
+  let { title } = pickTitleAndBody(body);
+  if (platformId === 'toutiao') title = clampToutiaoTitle(title);
+  return title || '';
+}
+
 /** 粘贴用公网图链：仅允许 http(s) 与 /uploads/，拒绝 javascript: 等危险协议 */
 export function safeExportImageUrl(raw) {
   const u = String(raw || '').trim();

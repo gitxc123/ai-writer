@@ -18,8 +18,8 @@ export const useUserStore = defineStore('user', {
       this.user = data.user;
       uni.setStorageSync('token', data.token);
     },
-    async register(phone, password, inviteCode, opts = {}) {
-      await api.register(phone, password, inviteCode, opts);
+    async register(phone, password, opts = {}) {
+      await api.register(phone, password, opts);
       // 注册成功后自动登录，减少一次跳转
       await this.login(phone, password, {
         acceptedTerms: Boolean(opts.acceptedTerms)
