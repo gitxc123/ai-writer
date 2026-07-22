@@ -57,7 +57,7 @@
       <view class="menu-item" @click="goLegal('/pages/legal/privacy')">
         <view>
           <text class="menu-title">隐私政策</text>
-          <text class="menu-sub">信息收集与 180 天留存说明</text>
+          <text class="menu-sub">信息收集与最近 10 条留存说明</text>
         </view>
         <text class="arrow">›</text>
       </view>
