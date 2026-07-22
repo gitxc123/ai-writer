@@ -21,6 +21,10 @@ export async function pruneUserRecordsToLimit(userId, limit = USER_RECORD_LIST_L
       ? Math.floor(Number(limit))
       : USER_RECORD_LIST_LIMIT;
 
+  // 先 count，未超限则跳过重查询，避免列表刷新变慢
+  const total = await prisma.generationRecord.count({ where: { userId } });
+  if (total <= max) return { deleted: 0, files: 0 };
+
   const all = await prisma.generationRecord.findMany({
     where: { userId },
     orderBy: { createdAt: 'desc' },

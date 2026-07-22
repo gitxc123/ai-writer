@@ -6,63 +6,93 @@
         <text class="toolbar-hint">仅保留最近 10 条</text>
       </view>
       <view class="toolbar-actions">
-        <text class="refresh-btn" @click="loadTasks(true)">刷新</text>
-      </view>
-    </view>
-
-    <view v-if="loading" class="empty">任务加载中…</view>
-    <view v-else-if="records.length === 0" class="empty empty-box">
-      <text class="empty-text">暂无任务</text>
-      <view class="empty-cta" @click="goTemplates">去选模板</view>
-    </view>
-
-    <view
-      v-for="item in records"
-      :key="item.id"
-      class="record-item"
-      @click="openDetail(item)"
-    >
-      <text class="icon">{{ getTaskIcon(item) }}</text>
-      <view class="info">
-        <view class="title-row">
-          <text class="name">{{ getTaskTitle(item) }}</text>
-          <text class="status" :class="getStatusMeta(item.status).class">
-            {{ getStatusMeta(item.status).label }}
-          </text>
-        </view>
-        <text class="time">{{ formatTime(item.updatedAt || item.createdAt) }}</text>
-        <view v-if="item.imageUrls?.length && (item.status === 'completed' || item.status === 'failed')" class="thumb-row">
-          <view
-            v-for="(thumb, idx) in getThumbs(item)"
-            :key="thumb.url + idx"
-            class="thumb-wrap"
-            :class="{ 'thumb-single': item.imageUrls.length === 1 }"
-          >
-            <image class="thumb" :src="thumb.url" mode="aspectFill" />
-            <text v-if="thumb.label" class="img-tag">{{ thumb.label }}</text>
-          </view>
-          <text v-if="item.imageUrls.length > 3" class="thumb-more">+{{ item.imageUrls.length - 3 }}</text>
-        </view>
-        <image
-          v-else-if="item.imageUrl && item.status === 'completed'"
-          class="thumb thumb-single"
-          :src="item.imageUrl"
-          mode="aspectFill"
-        />
-        <text class="preview" :class="{ error: item.status === 'failed' }">
-          {{ getPreviewText(item) }}
+        <text class="refresh-btn" :class="{ busy: refresherTriggered }" @click="onManualRefresh">
+          {{ refresherTriggered ? '刷新中' : '刷新' }}
         </text>
       </view>
     </view>
 
-    <view class="bottom-space" />
+    <scroll-view
+      class="list-scroll"
+      scroll-y
+      :refresher-enabled="refresherEnabled"
+      :refresher-triggered="refresherTriggered"
+      :refresher-threshold="72"
+      refresher-default-style="none"
+      refresher-background="#f4f6fa"
+      @scroll="onScroll"
+      @refresherpulling="onRefresherPulling"
+      @refresherrefresh="onRefresherRefresh"
+      @refresherrestore="onRefresherRestore"
+      @refresherabort="onRefresherAbort"
+    >
+      <template #refresher>
+        <view class="refresher">
+          <view class="refresher-inner">
+            <view class="refresher-spinner" :class="{ spin: pullPhase === 'loading' }" />
+            <text class="refresher-text">{{ pullHint }}</text>
+          </view>
+        </view>
+      </template>
+
+      <view v-if="loading && !records.length" class="empty">任务加载中…</view>
+      <view v-else-if="!loading && records.length === 0" class="empty empty-box">
+        <text class="empty-text">暂无任务</text>
+        <view class="empty-cta" @click="goTemplates">去选模板</view>
+      </view>
+
+      <view
+        v-for="item in records"
+        :key="item.id"
+        class="record-item"
+        @click="openDetail(item)"
+      >
+        <text class="icon">{{ getTaskIcon(item) }}</text>
+        <view class="info">
+          <view class="title-row">
+            <text class="name">{{ getTaskTitle(item) }}</text>
+            <text class="status" :class="getStatusMeta(item.status).class">
+              {{ getStatusMeta(item.status).label }}
+            </text>
+          </view>
+          <text class="time">{{ formatTime(item.updatedAt || item.createdAt) }}</text>
+          <view
+            v-if="item.imageUrls?.length && (item.status === 'completed' || item.status === 'failed')"
+            class="thumb-row"
+          >
+            <view
+              v-for="(thumb, idx) in getThumbs(item)"
+              :key="thumb.url + idx"
+              class="thumb-wrap"
+              :class="{ 'thumb-single': item.imageUrls.length === 1 }"
+            >
+              <image class="thumb" :src="thumb.url" mode="aspectFill" />
+              <text v-if="thumb.label" class="img-tag">{{ thumb.label }}</text>
+            </view>
+            <text v-if="item.imageUrls.length > 3" class="thumb-more">+{{ item.imageUrls.length - 3 }}</text>
+          </view>
+          <image
+            v-else-if="item.imageUrl && item.status === 'completed'"
+            class="thumb thumb-single"
+            :src="item.imageUrl"
+            mode="aspectFill"
+          />
+          <text class="preview" :class="{ error: item.status === 'failed' }">
+            {{ getPreviewText(item) }}
+          </text>
+        </view>
+      </view>
+
+      <view class="bottom-space" />
+    </scroll-view>
+
     <TabBar current="/pages/history/index" />
   </view>
 </template>
 
 <script setup>
-import { ref, onMounted } from 'vue';
-import { onShow, onPullDownRefresh } from '@dcloudio/uni-app';
+import { ref, computed, onMounted } from 'vue';
+import { onShow } from '@dcloudio/uni-app';
 import { api } from '../../utils/request.js';
 import { useUserStore } from '../../stores/user.js';
 import TabBar from '../../components/TabBar.vue';
@@ -81,8 +111,28 @@ import { applyImageUrlCacheToRecords } from '../../utils/imageUrlCache.js';
 
 const records = ref([]);
 const loading = ref(false);
-const backgroundLoading = ref(false);
+const refresherTriggered = ref(false);
+/** idle | pulling | release | loading */
+const pullPhase = ref('idle');
+const scrollTop = ref(0);
 const userStore = useUserStore();
+let loadSeq = 0;
+let refreshLock = false;
+let refreshStartedAt = 0;
+
+const REFRESH_THRESHOLD = 72;
+const MIN_REFRESH_MS = 480;
+
+const refresherEnabled = computed(
+  () => scrollTop.value <= 2 || refresherTriggered.value
+);
+
+const pullHint = computed(() => {
+  if (pullPhase.value === 'loading') return '正在刷新…';
+  if (pullPhase.value === 'release') return '松开刷新';
+  if (pullPhase.value === 'pulling') return '下拉刷新';
+  return '下拉刷新';
+});
 
 function goTemplates() {
   uni.redirectTo({ url: '/pages/templates/index' });
@@ -124,11 +174,20 @@ async function ensureUserId() {
   return userStore.user?.id || null;
 }
 
-async function loadTasks(force = false, { keepVisible = false } = {}) {
+function sleep(ms) {
+  return new Promise((resolve) => setTimeout(resolve, ms));
+}
+
+/**
+ * @param {boolean} force 强制请求网络
+ * @param {{ soft?: boolean }} opts soft=true 时保留列表
+ */
+async function loadTasks(force = false, { soft = false } = {}) {
   if (!userStore.isLogin) return;
 
   const userId = await ensureUserId();
   const hadList = records.value.length > 0;
+  const seq = ++loadSeq;
 
   if (!force && userId) {
     const cached = loadRecordsCache(userId);
@@ -137,18 +196,12 @@ async function loadTasks(force = false, { keepVisible = false } = {}) {
     }
   }
 
-  const showSpinner = !keepVisible && (force || !records.value.length);
-  if (showSpinner) {
-    if (loading.value) return;
-    loading.value = true;
-  } else if (backgroundLoading.value) {
-    return;
-  } else {
-    backgroundLoading.value = true;
-  }
+  const blankPage = !soft && !records.value.length;
+  if (blankPage) loading.value = true;
 
   try {
     const list = await api.getRecords();
+    if (seq !== loadSeq) return;
     const processed = applyImageUrlCacheToRecords(
       (Array.isArray(list) ? list : []).slice(0, RECORDS_LIST_LIMIT),
       userId
@@ -156,21 +209,71 @@ async function loadTasks(force = false, { keepVisible = false } = {}) {
     records.value = processed;
     if (userId) saveRecordsCache(userId, processed);
   } catch (e) {
-    if (showSpinner || !hadList) {
+    if (seq !== loadSeq) return;
+    if (blankPage || !hadList || force) {
       uni.showToast({ title: e.message || '任务加载失败', icon: 'none', duration: 2500 });
     }
   } finally {
-    loading.value = false;
-    backgroundLoading.value = false;
+    if (seq === loadSeq) loading.value = false;
   }
 }
 
-async function onPullRefresh() {
-  try {
-    await loadTasks(true, { keepVisible: true });
-  } finally {
-    uni.stopPullDownRefresh();
+function onScroll(e) {
+  scrollTop.value = Number(e?.detail?.scrollTop || 0);
+}
+
+function onRefresherPulling(e) {
+  if (refreshLock || refresherTriggered.value) return;
+  const dy = Number(e?.detail?.dy ?? e?.detail?.deltaY ?? 0);
+  if (dy < 0) return;
+  pullPhase.value = dy >= REFRESH_THRESHOLD ? 'release' : 'pulling';
+}
+
+function onRefresherRestore() {
+  if (!refreshLock) pullPhase.value = 'idle';
+}
+
+function onRefresherAbort() {
+  if (!refreshLock) {
+    pullPhase.value = 'idle';
+    refresherTriggered.value = false;
   }
+}
+
+async function finishRefresher() {
+  const wait = Math.max(0, MIN_REFRESH_MS - (Date.now() - refreshStartedAt));
+  if (wait) await sleep(wait);
+  refresherTriggered.value = false;
+  pullPhase.value = 'idle';
+  refreshLock = false;
+}
+
+async function runRefresh() {
+  if (refreshLock) return;
+  refreshLock = true;
+  pullPhase.value = 'loading';
+  refresherTriggered.value = true;
+  refreshStartedAt = Date.now();
+  try {
+    await loadTasks(true, { soft: true });
+  } finally {
+    await finishRefresher();
+  }
+}
+
+async function onRefresherRefresh() {
+  // 未到顶时误触：立刻复位
+  if (scrollTop.value > 2) {
+    refresherTriggered.value = false;
+    pullPhase.value = 'idle';
+    return;
+  }
+  await runRefresh();
+}
+
+async function onManualRefresh() {
+  if (refreshLock || refresherTriggered.value) return;
+  await runRefresh();
 }
 
 function formatTime(t) {
@@ -191,24 +294,25 @@ onMounted(() => {
 });
 
 onShow(() => {
-  if (userStore.isLogin) loadTasks();
-});
-
-onPullDownRefresh(() => {
-  onPullRefresh();
+  if (userStore.isLogin) loadTasks(false, { soft: true });
 });
 </script>
 
 <style scoped>
 .page {
-  padding: 24rpx;
-  padding-bottom: 140rpx;
+  height: 100vh;
+  padding: 24rpx 24rpx 0;
+  box-sizing: border-box;
+  display: flex;
+  flex-direction: column;
+  background: #f4f6fa;
 }
 .toolbar {
   display: flex;
   justify-content: space-between;
   align-items: center;
   margin-bottom: 16rpx;
+  flex-shrink: 0;
 }
 .toolbar-left {
   display: flex;
@@ -232,6 +336,49 @@ onPullDownRefresh(() => {
 .refresh-btn {
   font-size: 26rpx;
   color: #0a84ff;
+}
+.refresh-btn.busy {
+  color: #909399;
+}
+.list-scroll {
+  flex: 1;
+  height: 0;
+  padding-bottom: 140rpx;
+  box-sizing: border-box;
+}
+.refresher {
+  width: 100%;
+  height: 100%;
+  display: flex;
+  align-items: flex-end;
+  justify-content: center;
+  padding-bottom: 16rpx;
+  box-sizing: border-box;
+}
+.refresher-inner {
+  display: flex;
+  align-items: center;
+  gap: 12rpx;
+}
+.refresher-spinner {
+  width: 28rpx;
+  height: 28rpx;
+  border-radius: 50%;
+  border: 3rpx solid #dcdfe6;
+  border-top-color: #0a84ff;
+  box-sizing: border-box;
+}
+.refresher-spinner.spin {
+  animation: spin 0.7s linear infinite;
+}
+@keyframes spin {
+  to {
+    transform: rotate(360deg);
+  }
+}
+.refresher-text {
+  font-size: 24rpx;
+  color: #909399;
 }
 .empty {
   text-align: center;
@@ -343,7 +490,6 @@ onPullDownRefresh(() => {
   border-radius: 12rpx;
   display: block;
 }
-/* 兼容仅有单张 imageUrl 的旧任务 */
 image.thumb.thumb-single {
   width: 100%;
   height: 200rpx;

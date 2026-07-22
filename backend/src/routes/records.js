@@ -198,11 +198,10 @@ router.post('/:id/localize-images', authMiddleware, async (req, res) => {
 });
 
 router.get('/', authMiddleware, async (req, res) => {
-  try {
-    await pruneUserRecordsToLimit(req.userId, USER_RECORD_LIST_LIMIT);
-  } catch (err) {
+  // 裁剪放到后台，不阻塞列表返回（刷新体感）
+  pruneUserRecordsToLimit(req.userId, USER_RECORD_LIST_LIMIT).catch((err) => {
     console.warn('[records] prune failed', err.message);
-  }
+  });
 
   let records = await prisma.generationRecord.findMany({
     where: { userId: req.userId },
@@ -224,7 +223,9 @@ router.get('/', authMiddleware, async (req, res) => {
       template: { select: { name: true, icon: true } }
     }
   });
-  records = await hydrateImageMeta(records);
+  if (records.some((r) => r.imageMeta == null)) {
+    records = await hydrateImageMeta(records);
+  }
 
   const data = records.map((record) => {
     let imageUrls = [];
