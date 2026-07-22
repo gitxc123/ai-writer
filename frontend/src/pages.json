@@ -18,7 +18,9 @@
       "path": "pages/history/index",
       "style": {
         "navigationBarTitleText": "任务",
-        "navigationStyle": "custom"
+        "navigationStyle": "custom",
+        "enablePullDownRefresh": true,
+        "backgroundTextStyle": "dark"
       }
     },
     {

@@ -23,6 +23,7 @@ import {
   pickQualityTip,
   QUALITY_TIPS
 } from '../lib/submit-cooldown.js';
+import { pruneUserRecordsToLimit, USER_RECORD_LIST_LIMIT } from '../lib/retention.js';
 
 const router = Router();
 
@@ -193,6 +194,9 @@ router.post('/', authMiddleware, async (req, res) => {
 
     markSubmitCooldown(req.userId);
     enqueueGenerationTask(task.id);
+    pruneUserRecordsToLimit(req.userId, USER_RECORD_LIST_LIMIT).catch((err) => {
+      console.warn('[generate] prune failed', err.message);
+    });
 
     const usedAfter = usage.used + 1;
     const tip = pickQualityTip(usedAfter);

@@ -2,9 +2,53 @@ import { prisma } from './prisma.js';
 import { deleteUploadFilesForRecord } from './upload-cleanup.js';
 import { purgeTaskLogs } from './logger.js';
 
+/** 每个用户任务列表最多保留条数（展示与落库一致） */
+export const USER_RECORD_LIST_LIMIT = 10;
+
 export function getRecordRetentionDays() {
   const n = Number(process.env.RECORD_RETENTION_DAYS || 180);
   return Number.isFinite(n) && n > 0 ? Math.floor(n) : 180;
+}
+
+/**
+ * 将某用户的生成记录裁到最近 limit 条（按 createdAt 倒序），并清理配图与 TaskLog。
+ * 进行中的任务始终保留，避免被裁掉。
+ */
+export async function pruneUserRecordsToLimit(userId, limit = USER_RECORD_LIST_LIMIT) {
+  if (!userId) return { deleted: 0, files: 0 };
+  const max =
+    Number.isFinite(Number(limit)) && Number(limit) > 0
+      ? Math.floor(Number(limit))
+      : USER_RECORD_LIST_LIMIT;
+
+  const all = await prisma.generationRecord.findMany({
+    where: { userId },
+    orderBy: { createdAt: 'desc' },
+    select: {
+      id: true,
+      status: true,
+      imageUrl: true,
+      imageUrls: true,
+      imageMeta: true
+    }
+  });
+
+  const keepIds = new Set(all.slice(0, max).map((r) => r.id));
+  for (const r of all) {
+    if (r.status === 'pending' || r.status === 'processing') keepIds.add(r.id);
+  }
+
+  const toDelete = all.filter((r) => !keepIds.has(r.id));
+  if (!toDelete.length) return { deleted: 0, files: 0 };
+
+  let files = 0;
+  for (const r of toDelete) {
+    files += deleteUploadFilesForRecord(r);
+  }
+  const ids = toDelete.map((r) => r.id);
+  await prisma.taskLog.deleteMany({ where: { taskId: { in: ids } } });
+  const result = await prisma.generationRecord.deleteMany({ where: { id: { in: ids } } });
+  return { deleted: result.count, files };
 }
 
 /**

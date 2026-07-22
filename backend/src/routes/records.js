@@ -3,6 +3,7 @@ import { prisma } from '../lib/prisma.js';
 import { authMiddleware } from '../middleware/auth.js';
 import { signRecordImageFields, attachUploadPaths } from '../lib/upload-sign.js';
 import { checkDailyGenerateQuota } from '../lib/quota.js';
+import { pruneUserRecordsToLimit, USER_RECORD_LIST_LIMIT } from '../lib/retention.js';
 
 async function hydrateImageMeta(records) {
   if (!records.length) return records;
@@ -195,10 +196,16 @@ router.post('/:id/localize-images', authMiddleware, async (req, res) => {
 });
 
 router.get('/', authMiddleware, async (req, res) => {
+  try {
+    await pruneUserRecordsToLimit(req.userId, USER_RECORD_LIST_LIMIT);
+  } catch (err) {
+    console.warn('[records] prune failed', err.message);
+  }
+
   let records = await prisma.generationRecord.findMany({
     where: { userId: req.userId },
     orderBy: { createdAt: 'desc' },
-    take: 50,
+    take: USER_RECORD_LIST_LIMIT,
     select: {
       id: true,
       status: true,

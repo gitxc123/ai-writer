@@ -1,14 +1,13 @@
 <template>
   <view class="page">
     <view class="toolbar">
-      <text class="toolbar-title">任务列表</text>
+      <view class="toolbar-left">
+        <text class="toolbar-title">任务列表</text>
+        <text class="toolbar-hint">仅保留最近 10 条</text>
+      </view>
       <view class="toolbar-actions">
         <text class="refresh-btn" @click="loadTasks(true)">刷新</text>
-        <text class="refresh-btn muted" @click="showOps = !showOps">{{ showOps ? '收起' : '更多' }}</text>
       </view>
-    </view>
-    <view v-if="showOps" class="ops-row">
-      <text class="ops-btn" @click="resumeStuck">恢复卡住的任务</text>
     </view>
 
     <view v-if="loading" class="empty">任务加载中…</view>
@@ -63,7 +62,7 @@
 
 <script setup>
 import { ref, onMounted } from 'vue';
-import { onShow } from '@dcloudio/uni-app';
+import { onShow, onPullDownRefresh } from '@dcloudio/uni-app';
 import { api } from '../../utils/request.js';
 import { useUserStore } from '../../stores/user.js';
 import TabBar from '../../components/TabBar.vue';
@@ -75,7 +74,8 @@ import {
 } from '../../utils/taskStatus.js';
 import {
   loadRecordsCache,
-  saveRecordsCache
+  saveRecordsCache,
+  RECORDS_LIST_LIMIT
 } from '../../utils/recordsCache.js';
 import { applyImageUrlCacheToRecords } from '../../utils/imageUrlCache.js';
 
@@ -83,7 +83,6 @@ const records = ref([]);
 const loading = ref(false);
 const backgroundLoading = ref(false);
 const userStore = useUserStore();
-const showOps = ref(false);
 
 function goTemplates() {
   uni.redirectTo({ url: '/pages/templates/index' });
@@ -125,7 +124,7 @@ async function ensureUserId() {
   return userStore.user?.id || null;
 }
 
-async function loadTasks(force = false) {
+async function loadTasks(force = false, { keepVisible = false } = {}) {
   if (!userStore.isLogin) return;
 
   const userId = await ensureUserId();
@@ -138,7 +137,7 @@ async function loadTasks(force = false) {
     }
   }
 
-  const showSpinner = force || !records.value.length;
+  const showSpinner = !keepVisible && (force || !records.value.length);
   if (showSpinner) {
     if (loading.value) return;
     loading.value = true;
@@ -150,7 +149,10 @@ async function loadTasks(force = false) {
 
   try {
     const list = await api.getRecords();
-    const processed = applyImageUrlCacheToRecords(Array.isArray(list) ? list : [], userId);
+    const processed = applyImageUrlCacheToRecords(
+      (Array.isArray(list) ? list : []).slice(0, RECORDS_LIST_LIMIT),
+      userId
+    );
     records.value = processed;
     if (userId) saveRecordsCache(userId, processed);
   } catch (e) {
@@ -163,14 +165,11 @@ async function loadTasks(force = false) {
   }
 }
 
-async function resumeStuck() {
-  if (!userStore.checkLogin()) return;
+async function onPullRefresh() {
   try {
-    await api.resumeTasks();
-    uni.showToast({ title: '已重新排队' });
-    await loadTasks(true);
-  } catch (e) {
-    uni.showToast({ title: e.message, icon: 'none' });
+    await loadTasks(true, { keepVisible: true });
+  } finally {
+    uni.stopPullDownRefresh();
   }
 }
 
@@ -194,6 +193,10 @@ onMounted(() => {
 onShow(() => {
   if (userStore.isLogin) loadTasks();
 });
+
+onPullDownRefresh(() => {
+  onPullRefresh();
+});
 </script>
 
 <style scoped>
@@ -207,27 +210,28 @@ onShow(() => {
   align-items: center;
   margin-bottom: 16rpx;
 }
+.toolbar-left {
+  display: flex;
+  align-items: baseline;
+  gap: 12rpx;
+  min-width: 0;
+}
 .toolbar-actions {
   display: flex;
   gap: 24rpx;
+  flex-shrink: 0;
 }
 .toolbar-title {
   font-size: 30rpx;
   font-weight: 600;
 }
+.toolbar-hint {
+  font-size: 22rpx;
+  color: #c0c4cc;
+}
 .refresh-btn {
   font-size: 26rpx;
   color: #0a84ff;
-}
-.refresh-btn.muted {
-  color: #909399;
-}
-.ops-row {
-  margin: -4rpx 0 16rpx;
-}
-.ops-btn {
-  font-size: 24rpx;
-  color: #909399;
 }
 .empty {
   text-align: center;

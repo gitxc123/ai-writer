@@ -1,6 +1,8 @@
 const CACHE_PREFIX = 'records_cache_v1';
 const DEFAULT_TTL_MS = 5 * 60 * 1000;
 const RUNNING_TTL_MS = 30 * 1000;
+/** 与后端 USER_RECORD_LIST_LIMIT 一致 */
+export const RECORDS_LIST_LIMIT = 10;
 
 function cacheKey(userId) {
   return `${CACHE_PREFIX}:${userId}`;
@@ -13,7 +15,10 @@ export function loadRecordsCache(userId) {
     if (!raw) return null;
     const parsed = JSON.parse(raw);
     if (!parsed || !Array.isArray(parsed.records)) return null;
-    return parsed;
+    return {
+      ...parsed,
+      records: parsed.records.slice(0, RECORDS_LIST_LIMIT)
+    };
   } catch {
     return null;
   }
@@ -26,7 +31,7 @@ export function saveRecordsCache(userId, records) {
       cacheKey(userId),
       JSON.stringify({
         fetchedAt: Date.now(),
-        records
+        records: records.slice(0, RECORDS_LIST_LIMIT)
       })
     );
   } catch {

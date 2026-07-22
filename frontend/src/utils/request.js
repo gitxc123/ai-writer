@@ -159,7 +159,6 @@ export const api = {
     request({ url: `/records/${id}/images/${index}/regenerate`, method: 'POST' }),
   localizeRecordImages: (id) =>
     request({ url: `/records/${id}/localize-images`, method: 'POST' }),
-  resumeTasks: () => request({ url: '/records/resume', method: 'POST' }),
   getLogsMeta: () => request({ url: '/logs/meta' }),
   getLogs: (params = {}) => {
     const q = new URLSearchParams();
