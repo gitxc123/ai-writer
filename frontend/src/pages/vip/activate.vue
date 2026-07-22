@@ -2,8 +2,13 @@
   <view class="page">
     <view class="hero">
       <text class="hero-title">激活码开通</text>
-      <text class="activate-desc">输入激活码可开通或顺延会员（万能码每次 {{ activationDays }} 天）</text>
-      <view v-if="userStore.user?.isMember" class="current">
+      <text class="activate-desc">输入激活码可开通或顺延会员</text>
+      <view
+        v-if="userStore.user?.isMember"
+        class="current"
+        :class="{ agent: userStore.user?.memberPlan === 'lifetime' }"
+      >
+        <text v-if="userStore.user?.memberPlan === 'lifetime'" class="current-mark">◆</text>
         当前：{{ userStore.user.memberLabel }}
         <text v-if="userStore.user.memberExpireAt && userStore.user.memberPlan !== 'lifetime'">
           · 至 {{ formatDate(userStore.user.memberExpireAt) }}
@@ -35,18 +40,9 @@ import { useUserStore } from '../../stores/user.js';
 const userStore = useUserStore();
 const activating = ref(false);
 const activationCode = ref('');
-const activationDays = ref(3);
 
 onMounted(async () => {
   if (!userStore.checkLogin()) return;
-  try {
-    const cfg = await api.getMembershipConfig();
-    if (cfg?.activationCodeDays) {
-      activationDays.value = Number(cfg.activationCodeDays) || 3;
-    }
-  } catch {
-    // ignore
-  }
   await refreshMe();
 });
 
@@ -127,7 +123,20 @@ async function activate() {
   background: #eef6ff;
   padding: 12rpx 20rpx;
   border-radius: 999rpx;
-  display: inline-block;
+  display: inline-flex;
+  align-items: center;
+  gap: 6rpx;
+}
+.current.agent {
+  color: #5c3d0e;
+  font-weight: 600;
+  background: linear-gradient(105deg, #f3dfa0 0%, #e8c66a 45%, #d4a84b 100%);
+  border: 1rpx solid #c9a227;
+}
+.current-mark {
+  font-size: 18rpx;
+  color: #8a6420;
+  line-height: 1;
 }
 .activate-box {
   background: #fff;

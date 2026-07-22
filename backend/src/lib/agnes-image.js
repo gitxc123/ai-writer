@@ -22,21 +22,40 @@ const IMAGE_VARIANTS = [
   'summary visual, clean minimalist layout'
 ];
 
+/** AI 生图：凡出现人物，统一东亚/亚洲人外貌 */
+export const ASIAN_PEOPLE_CONSTRAINT =
+  'If any person appears in the image, all people must be East Asian / Asian appearance (东亚亚洲人脸与气质); do not depict Caucasian or Western facial features for human subjects';
+
+export function applyAsianPeopleConstraint(prompt) {
+  const p = String(prompt || '').trim();
+  if (!p) return p;
+  if (p.includes(ASIAN_PEOPLE_CONSTRAINT) || /all people must be East Asian/i.test(p)) {
+    return p;
+  }
+  return `${p}. ${ASIAN_PEOPLE_CONSTRAINT}`;
+}
+
 export function buildImagePrompt({ keyword, style, templateName }) {
   const topic = keyword || templateName || 'creative content';
   const mood = style || 'modern and clean';
-  return `A high-quality social media illustration about "${topic}", ${mood} style, vibrant colors, professional composition, suitable for article cover, no text overlay, detailed and eye-catching`;
+  return applyAsianPeopleConstraint(
+    `A high-quality social media illustration about "${topic}", ${mood} style, vibrant colors, professional composition, suitable for article cover, no text overlay, detailed and eye-catching`
+  );
 }
 
 export function buildImagePromptVariant({ keyword, style, templateName, output, index, total, scenePrompt }) {
   if (scenePrompt) {
-    return `${scenePrompt}. High quality, professional composition, suitable for social media article illustration, no text overlay, image ${index + 1} of ${total}`;
+    return applyAsianPeopleConstraint(
+      `${scenePrompt}. High quality, professional composition, suitable for social media article illustration, no text overlay, image ${index + 1} of ${total}`
+    );
   }
   const base = buildImagePrompt({ keyword, style, templateName });
   const variant = IMAGE_VARIANTS[index % IMAGE_VARIANTS.length];
   const snippet = output ? output.replace(/\s+/g, ' ').slice(0, 200) : '';
   const context = snippet ? `, must visually represent this article section: "${snippet}"` : '';
-  return `${base}, ${variant}${context}, image ${index + 1} of ${total}, unique angle, content-accurate`;
+  return applyAsianPeopleConstraint(
+    `${base}, ${variant}${context}, image ${index + 1} of ${total}, unique angle, content-accurate`
+  );
 }
 
 export function buildImagePayload({ prompt, size = '1024x768', model, images }) {
@@ -49,7 +68,7 @@ export function buildImagePayload({ prompt, size = '1024x768', model, images }) 
     : (model || DEFAULT_MODEL);
   return {
     model: resolvedModel,
-    prompt,
+    prompt: applyAsianPeopleConstraint(prompt),
     size: SIZE_OPTIONS[size] || size,
     extra_body
   };

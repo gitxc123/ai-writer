@@ -1,7 +1,7 @@
 /**
  * 会员套餐定义
- * trial / monthly / yearly / lifetime（成为代理：永久权益 + 固定比例返现）
- * 代理档不支持在线自助支付，联系客服开通
+ * trial / monthly / yearly / lifetime（成为高级代理：永久权益 + 固定比例返现）
+ * 高级代理档不支持在线自助支付，联系客服开通
  */
 export const MEMBER_PLANS = [
   {
@@ -33,10 +33,10 @@ export const MEMBER_PLANS = [
   },
   {
     id: 'lifetime',
-    name: '成为代理',
+    name: '成为高级代理',
     price: 499,
     days: 0, // 0 = 永久
-    badge: '代理',
+    badge: '高级代理',
     isAgent: true,
     agentRate: 0.5,
     desc: '享受全部创作权益的永久使用权，并终身获得固定比例返现',
@@ -49,11 +49,11 @@ export const MEMBER_PLANS = [
   }
 ];
 
-/** 与「成为代理」档一致，供配置接口返回 */
+/** 与「成为高级代理」档一致，供配置接口返回 */
 export const AGENT_PROGRAM = {
   id: 'agent',
-  name: '成为代理',
-  badge: '代理',
+  name: '成为高级代理',
+  badge: '高级代理',
   rate: 0.5,
   price: 499,
   desc: '享受全部创作权益的永久使用权，并终身获得固定比例返现',
@@ -86,7 +86,7 @@ export function isMemberActive(user) {
 export function formatMemberLabel(user) {
   if (!user) return '未开通';
   if (isMemberActive(user)) {
-    if (user.memberPlan === 'lifetime' || user.isAgent) return '代理';
+    if (user.memberPlan === 'lifetime' || user.isAgent) return '高级代理';
     const map = { trial: '试用会员', monthly: '包月会员', yearly: '包年会员', code: '激活码会员' };
     return map[user.memberPlan] || '会员';
   }

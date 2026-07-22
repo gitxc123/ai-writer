@@ -399,6 +399,7 @@ export async function planArticleImages({ output, keyword, style, count }) {
 2. ${kindHint}
 3. ${subjectRule}
 4. 禁止为了“好看”选无关人物肖像或城市风景。
+5. scenePrompt 若涉及人物，必须明确写 East Asian / Asian people（东亚/亚洲人外貌），不要写西方白人面孔。
 只返回 JSON 数组。`
           },
           {

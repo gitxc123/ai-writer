@@ -1,13 +1,18 @@
 <template>
   <view class="page">
-    <view class="user-card">
-      <view class="avatar" :style="{ background: displayAvatar.bg }">
+    <view class="user-card" :class="{ agent: isAgent }">
+      <view class="avatar" :class="{ agent: isAgent }" :style="{ background: displayAvatar.bg }">
         <text class="avatar-emoji">{{ displayAvatar.emoji }}</text>
       </view>
       <view class="info">
         <text class="name">{{ userStore.user?.nickName || '未登录' }}</text>
         <text class="phone" v-if="userStore.user">{{ userStore.user.phone }}</text>
-        <view v-if="userStore.isLogin" class="vip-tag" :class="{ on: userStore.user?.isMember }">
+        <view
+          v-if="userStore.isLogin"
+          class="vip-tag"
+          :class="{ on: userStore.user?.isMember, agent: isAgent }"
+        >
+          <text v-if="isAgent" class="vip-tag-mark">◆</text>
           {{ userStore.user?.memberLabel || '未开通' }}
         </view>
       </view>
@@ -125,6 +130,14 @@ const displayAvatar = computed(() =>
   resolveAvatar(userStore.user?.avatar, userStore.user?.id || userStore.user?.phone || 'guest')
 );
 
+const isAgent = computed(
+  () =>
+    !!userStore.user &&
+    (userStore.user.memberPlan === 'lifetime' ||
+      userStore.user.memberLabel === '高级代理' ||
+      userStore.user.memberLabel === '代理')
+);
+
 onMounted(async () => {
   if (!userStore.isLogin) return;
   await userStore.fetchUser();
@@ -223,6 +236,11 @@ function logout() {
   align-items: center;
   margin-bottom: 24rpx;
 }
+.user-card.agent {
+  background: linear-gradient(135deg, #fffef8 0%, #f8efd4 48%, #f0e2bc 100%);
+  border: 1rpx solid #e2c98a;
+  box-shadow: 0 8rpx 24rpx rgba(154, 107, 47, 0.12);
+}
 .avatar {
   width: 100rpx;
   height: 100rpx;
@@ -233,6 +251,9 @@ function logout() {
   justify-content: center;
   margin-right: 24rpx;
   flex-shrink: 0;
+}
+.avatar.agent {
+  box-shadow: 0 0 0 4rpx rgba(201, 162, 39, 0.35);
 }
 .avatar-emoji {
   font-size: 52rpx;
@@ -254,7 +275,9 @@ function logout() {
 }
 .vip-tag {
   margin-top: 12rpx;
-  display: inline-block;
+  display: inline-flex;
+  align-items: center;
+  gap: 6rpx;
   font-size: 22rpx;
   padding: 4rpx 16rpx;
   border-radius: 999rpx;
@@ -264,6 +287,21 @@ function logout() {
 .vip-tag.on {
   background: #fff7e6;
   color: #d48806;
+}
+.vip-tag.agent {
+  padding: 6rpx 18rpx;
+  font-size: 22rpx;
+  font-weight: 700;
+  letter-spacing: 1rpx;
+  color: #5c3d0e;
+  background: linear-gradient(105deg, #f3dfa0 0%, #e8c66a 45%, #d4a84b 100%);
+  border: 1rpx solid #c9a227;
+  box-shadow: 0 4rpx 12rpx rgba(154, 107, 47, 0.2);
+}
+.vip-tag-mark {
+  font-size: 18rpx;
+  color: #8a6420;
+  line-height: 1;
 }
 .menu {
   background: #fff;

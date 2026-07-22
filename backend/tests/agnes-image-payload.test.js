@@ -14,7 +14,8 @@ describe('buildImagePayload', () => {
     assert.deepEqual(payload.extra_body.image, ['https://cdn.example.com/ref.jpg']);
     assert.equal(payload.extra_body.response_format, 'url');
     assert.equal(payload.size, '1024x1024');
-    assert.equal(payload.prompt, 'enhance product photo');
+    assert.match(payload.prompt, /enhance product photo/);
+    assert.match(payload.prompt, /East Asian|Asian appearance/);
   });
 
   it('without images omits image key and keeps default model', () => {
@@ -27,7 +28,16 @@ describe('buildImagePayload', () => {
     assert.equal(payload.extra_body.image, undefined);
     assert.equal(payload.extra_body.response_format, 'url');
     assert.equal(payload.size, '1024x768');
-    assert.equal(payload.prompt, 'cover illustration');
+    assert.match(payload.prompt, /cover illustration/);
+    assert.match(payload.prompt, /East Asian|Asian appearance/);
+  });
+
+  it('does not duplicate Asian people constraint', () => {
+    const once = buildImagePayload({ prompt: 'a person drinking coffee' }).prompt;
+    const twice = buildImagePayload({ prompt: once }).prompt;
+    const marker = 'all people must be East Asian';
+    const count = twice.split(marker).length - 1;
+    assert.equal(count, 1);
   });
 
   it('respects explicit model when images are provided', () => {

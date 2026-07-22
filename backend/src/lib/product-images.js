@@ -262,6 +262,7 @@ export async function auditAndFixProductJobs(jobs, ctx = {}) {
       '2) asks for ultra-sharp photoreal ecommerce quality,',
       '3) for scene shots: forbids impossible object counts (e.g. earbuds worn AND still inside open case),',
       '4) keeps studio white bg for enhanced/closeup only.',
+      '5) if any person appears, they must be East Asian / Asian appearance (not Caucasian).',
       'Input jobs:',
       JSON.stringify(
         flagged.map((f) => ({
