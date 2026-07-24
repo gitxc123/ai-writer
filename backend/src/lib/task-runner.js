@@ -63,6 +63,12 @@ const imageOnlyRetries = new Set();
 function stripWebAttribution(output) {
   return stripComplianceFooters(output);
 }
+
+function formatImageSourceLabel(source) {
+  const map = { ai: 'AI 生成', web: '网络搜图', product: '产品图' };
+  return map[String(source || '').trim()] || String(source || '配图');
+}
+
 const TASK_TIMEOUT_MS = Number(process.env.TASK_TIMEOUT_MS || 12 * 60 * 1000);
 /** 产品配图多轮重试，整任务时限放宽，避免有图仍被标失败 */
 const PRODUCT_TASK_TIMEOUT_MS = Number(process.env.PRODUCT_TASK_TIMEOUT_MS || 20 * 60 * 1000);
@@ -81,7 +87,7 @@ async function markProcessing(taskId) {
     where: { id: taskId },
     data: { status: TASK_STATUS.PROCESSING }
   });
-  await logTask(taskId, 'info', 'processing started');
+  await logTask(taskId, 'info', '开始处理');
 }
 
 async function markFailed(taskId, error) {
@@ -207,7 +213,7 @@ async function runGenerationTaskBody(taskId) {
     // 一键改文：先改写文案，再按用户选择走通用配图
     const source = String(inputs.article || inputs.keyword || '').trim();
     console.log('[task:generation] rewrite start', taskId, 'len=', source.length, 'images=', imageCount);
-    await logTask(taskId, 'info', 'rewrite start', { length: source.length, imageCount });
+    await logTask(taskId, 'info', '开始改写', { length: source.length, imageCount });
     const result = await withTimeout(
       rewriteArticlePipeline({
         source,
@@ -246,7 +252,7 @@ async function runGenerationTaskBody(taskId) {
           error: rewriteSoftNote
         }
       });
-      await logTask(taskId, 'info', 'completed');
+      await logTask(taskId, 'info', '任务完成');
       return;
     }
   } else {
@@ -276,7 +282,7 @@ async function runGenerationTaskBody(taskId) {
     }
 
     console.log('[task:generation] start text', taskId, { imageCount, imageSource });
-    await logTask(taskId, 'info', 'text start', { imageCount, imageSource });
+    await logTask(taskId, 'info', '开始生成文案', { imageCount, imageSource });
     const storyboard = isStoryboardTemplate(task.template.name);
     // 分镜输出长、模型慢：给足时间，并允许超时后自动再试 1 次
     const textTimeout = storyboard ? 480000 : 180000;
@@ -315,7 +321,7 @@ async function runGenerationTaskBody(taskId) {
       data: { output, error: null }
     });
     console.log('[task:generation] text done', taskId, 'len=', output.length);
-    await logTask(taskId, 'info', 'text done', { length: output.length });
+    await logTask(taskId, 'info', '文案生成完成', { length: output.length });
   }
 
   if (
@@ -548,7 +554,7 @@ async function runGenerationTaskBody(taskId) {
       }
     });
     console.log('[task:generation] product completed', taskId, 'images=', success, '/', expected);
-    await logTask(taskId, 'info', 'product completed', { success, expected });
+    await logTask(taskId, 'info', `产品配图完成（${success}/${expected}）`, { success, expected });
     return;
   }
 
@@ -558,7 +564,7 @@ async function runGenerationTaskBody(taskId) {
       where: { id: taskId },
       data: { status: TASK_STATUS.COMPLETED, output: finalOutput }
     });
-    await logTask(taskId, 'info', 'completed');
+    await logTask(taskId, 'info', '任务完成');
     return;
   }
 
@@ -609,7 +615,7 @@ async function runGenerationTaskBody(taskId) {
       imageSource,
       slotCustomPrompt ? '(custom prompt)' : plan?.searchQuery
     );
-    await logTask(taskId, 'info', `image ${i + 1}/${imageCount} ${imageSource}`, {
+    await logTask(taskId, 'info', `配图 ${i + 1}/${imageCount} · ${formatImageSourceLabel(imageSource)}`, {
       searchQuery: slotCustomPrompt ? undefined : plan?.searchQuery || undefined,
       customPrompt: Boolean(slotCustomPrompt) || undefined
     });
@@ -688,7 +694,7 @@ async function runGenerationTaskBody(taskId) {
     }
   });
   console.log('[task:generation] completed', taskId);
-  await logTask(taskId, 'info', 'completed');
+  await logTask(taskId, 'info', '任务完成');
 }
 
 async function loadTaskImageUrls(taskId) {
@@ -741,7 +747,7 @@ export async function runGenerationTask(taskId) {
           }
         });
         console.log('[task:generation] salvage partial images after timeout', taskId, urls.length);
-        await logTask(taskId, 'warn', 'salvage partial images after timeout', { count: urls.length });
+        await logTask(taskId, 'warn', `超时后保留已生成的部分配图（${urls.length} 张）`, { count: urls.length });
         return;
       }
     }
@@ -767,7 +773,7 @@ export async function runGenerationTask(taskId) {
         }
       });
       console.log('[task:generation] salvage text after image failure', taskId);
-      await logTask(taskId, 'warn', 'salvage text after image failure');
+      await logTask(taskId, 'warn', '配图失败，已保留文案结果');
       return;
     }
 
@@ -828,7 +834,7 @@ export async function runImageTask(taskId) {
 
 export function enqueueGenerationTask(taskId) {
   const stats = getTaskQueueStats();
-  logTask(taskId, 'info', 'queued', {
+  logTask(taskId, 'info', `已加入队列（运行 ${stats.active}，等待 ${stats.waiting}）`, {
     maxConcurrent: getMaxConcurrentTasks(),
     active: stats.active,
     waiting: stats.waiting

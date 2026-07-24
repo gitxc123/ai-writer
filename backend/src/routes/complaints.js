@@ -158,7 +158,7 @@ router.post('/admin/:id/takedown', requireAdmin, async (req, res) => {
     });
 
     console.log('[complaint] takedown', complaint.id, 'record=', record.id, 'files=', filesDeleted);
-    await logTask(record.id, 'warn', 'takedown by complaint', {
+    await logTask(record.id, 'warn', '因投诉下架内容', {
       complaintId: complaint.id,
       filesDeleted
     });

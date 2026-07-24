@@ -119,13 +119,21 @@ export async function backfillTaskLogsFromRecords(limit = 80) {
   let written = 0;
   for (const r of records) {
     const level = r.status === 'failed' ? 'error' : r.status === 'removed' ? 'warn' : 'info';
+    const statusMap = {
+      completed: '已完成',
+      failed: '失败',
+      pending: '排队中',
+      processing: '处理中',
+      removed: '已下架'
+    };
+    const statusLabel = statusMap[r.status] || r.status;
     const errPart = r.error ? ` · ${String(r.error).slice(0, 120)}` : '';
     try {
       await prisma.taskLog.create({
         data: {
           taskId: r.id,
           level,
-          message: `历史任务摘要 status=${r.status}${errPart}`,
+          message: `历史任务摘要 · ${statusLabel}${errPart}`,
           meta: serializeMeta({ backfill: true }),
           createdAt: r.updatedAt || r.createdAt
         }

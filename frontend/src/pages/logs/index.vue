@@ -68,7 +68,7 @@
           <text class="task-id">用户 ID · {{ item.userId }}</text>
           <text class="copy" @click.stop="copyId(item.userId, '已复制用户 ID')">复制</text>
         </view>
-        <text class="message">{{ item.message }}</text>
+        <text class="message">{{ localizeLogMessage(item.message) }}</text>
       </view>
     </template>
 
@@ -81,7 +81,7 @@
         @click="toggle(g.key)"
       >
         <view class="meta">
-          <text class="level" :class="g.level">{{ g.level }}</text>
+          <text class="level" :class="g.level">{{ levelLabel(g.level) }}</text>
           <text class="time">{{ formatTime(g.updatedAt) }}</text>
         </view>
         <view v-if="g.account" class="account-row">
@@ -99,10 +99,10 @@
         <view v-if="expanded[g.key]" class="steps" @click.stop>
           <view v-for="step in g.steps" :key="step.id" class="step">
             <view class="step-meta">
-              <text class="level tiny" :class="step.level">{{ step.level }}</text>
+              <text class="level tiny" :class="step.level">{{ levelLabel(step.level) }}</text>
               <text class="step-time">{{ formatTime(step.createdAt) }}</text>
             </view>
-            <text class="step-msg">{{ step.message }}</text>
+            <text class="step-msg">{{ localizeLogMessage(step.message) }}</text>
           </view>
         </view>
       </view>
@@ -125,6 +125,48 @@ function formatTime(t) {
   return new Date(t).toLocaleString('zh-CN');
 }
 
+function levelLabel(level) {
+  const map = { info: '信息', warn: '警告', error: '错误' };
+  return map[level] || level || '信息';
+}
+
+/** 兼容历史英文日志文案 */
+function localizeLogMessage(raw) {
+  const msg = String(raw || '').trim();
+  if (!msg) return '';
+  const exact = {
+    queued: '已加入队列',
+    'processing started': '开始处理',
+    'rewrite start': '开始改写',
+    'text start': '开始生成文案',
+    'text done': '文案生成完成',
+    completed: '任务完成',
+    'product completed': '产品配图完成',
+    'salvage partial images after timeout': '超时后保留已生成的部分配图',
+    'salvage text after image failure': '配图失败，已保留文案结果',
+    'takedown by complaint': '因投诉下架内容'
+  };
+  if (exact[msg]) return exact[msg];
+
+  let m = msg.match(/^image\s+(\d+)\/(\d+)\s+(\w+)$/i);
+  if (m) {
+    const src = { ai: 'AI 生成', web: '网络搜图', product: '产品图' }[m[3]] || m[3];
+    return `配图 ${m[1]}/${m[2]} · ${src}`;
+  }
+  m = msg.match(/^历史任务摘要\s+status=(\w+)(.*)$/i);
+  if (m) {
+    const statusMap = {
+      completed: '已完成',
+      failed: '失败',
+      pending: '排队中',
+      processing: '处理中',
+      removed: '已下架'
+    };
+    return `历史任务摘要 · ${statusMap[m[1]] || m[1]}${m[2] || ''}`;
+  }
+  return msg;
+}
+
 function accountLabel(item) {
   const name = String(item?.nickName || '').trim();
   const phone = String(item?.phone || '').trim();
@@ -139,11 +181,13 @@ function pickLevel(steps) {
 }
 
 function pickSummary(steps) {
-  const done = steps.find((s) => /^(completed|product completed)$/i.test(String(s.message || '')));
-  if (done) return done.message;
+  const done = steps.find((s) =>
+    /^(任务完成|产品配图完成|completed|product completed)/i.test(String(s.message || ''))
+  );
+  if (done) return localizeLogMessage(done.message);
   const err = steps.find((s) => s.level === 'error');
-  if (err) return err.message;
-  return steps[0]?.message || '过程日志';
+  if (err) return localizeLogMessage(err.message);
+  return localizeLogMessage(steps[0]?.message) || '过程日志';
 }
 
 /** 按任务折叠；无 taskId 的单独成组 */
@@ -335,7 +379,6 @@ onMounted(() => load());
   border-radius: 8rpx;
   background: #eef5ff;
   color: #0a84ff;
-  text-transform: uppercase;
 }
 .level.warn {
   background: #fff7e6;
