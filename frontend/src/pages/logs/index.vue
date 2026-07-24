@@ -36,8 +36,8 @@
       <text class="hint">
         {{
           logModule === 'register'
-            ? '记录新用户注册时间、昵称与脱敏手机号'
-            : '同一任务的过程日志已折叠为一条，点开可看明细'
+            ? '仅记录成败、配图张数与重新生成次数'
+            : '同一任务的关键结果已折叠，点开可看明细'
         }}
       </text>
     </view>
@@ -50,7 +50,7 @@
       {{
         filter
           ? '没有匹配的日志，请确认任务 ID 是否完整，或点「最近」查看全部'
-          : '暂无日志。请新提交一次生成任务；也可点「最近」加载历史任务摘要'
+          : '暂无关键日志。新任务完成后会出现成功/失败与配图摘要'
       }}
     </view>
 
@@ -93,10 +93,12 @@
         </view>
         <view class="summary-row">
           <text class="message">{{ g.summary }}</text>
-          <text class="expand">{{ expanded[g.key] ? '收起' : `${g.steps.length} 步 ›` }}</text>
+          <text v-if="g.steps.length > 1" class="expand">
+            {{ expanded[g.key] ? '收起' : `${g.steps.length} 条 ›` }}
+          </text>
         </view>
 
-        <view v-if="expanded[g.key]" class="steps" @click.stop>
+        <view v-if="expanded[g.key] && g.steps.length > 1" class="steps" @click.stop>
           <view v-for="step in g.steps" :key="step.id" class="step">
             <view class="step-meta">
               <text class="level tiny" :class="step.level">{{ levelLabel(step.level) }}</text>
@@ -182,12 +184,14 @@ function pickLevel(steps) {
 
 function pickSummary(steps) {
   const done = steps.find((s) =>
-    /^(任务完成|产品配图完成|completed|product completed)/i.test(String(s.message || ''))
+    /^(任务成功|任务部分成功|任务失败|重新生成|任务完成|产品配图完成|completed|product completed)/i.test(
+      String(s.message || '')
+    )
   );
   if (done) return localizeLogMessage(done.message);
   const err = steps.find((s) => s.level === 'error');
   if (err) return localizeLogMessage(err.message);
-  return localizeLogMessage(steps[0]?.message) || '过程日志';
+  return localizeLogMessage(steps[0]?.message) || '任务日志';
 }
 
 /** 按任务折叠；无 taskId 的单独成组 */

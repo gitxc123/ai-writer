@@ -34,7 +34,7 @@ import {
   persistImageUrl
 } from './public-url.js';
 import { logTask } from './logger.js';
-import { runWithTaskSlot, getTaskQueueStats, getMaxConcurrentTasks } from './task-queue.js';
+import { runWithTaskSlot } from './task-queue.js';
 import {
   TASK_STATUS,
   MAX_IMAGE_REGEN_PER_SLOT,
@@ -69,6 +69,29 @@ function formatImageSourceLabel(source) {
   return map[String(source || '').trim()] || String(source || '配图');
 }
 
+/** 仅写关键结果：成败、配图张数、可选补充说明 */
+async function logTaskOutcome(taskId, opts = {}) {
+  const {
+    outcome = 'success',
+    imagesOk = 0,
+    imagesExpected = 0,
+    imageSource = '',
+    detail = ''
+  } = opts;
+  const src = imageSource ? ` · ${formatImageSourceLabel(imageSource)}` : '';
+  const detailPart = detail ? ` · ${String(detail).replace(/\s+/g, ' ').trim().slice(0, 180)}` : '';
+  if (outcome === 'fail') {
+    await logTask(taskId, 'error', `任务失败${detailPart || ' · 未知错误'}`.slice(0, 500));
+    return;
+  }
+  let imgPart = '无配图';
+  if (imagesExpected > 0) imgPart = `配图 ${imagesOk}/${imagesExpected}${src}`;
+  else if (imagesOk > 0) imgPart = `配图 ${imagesOk} 张${src}`;
+  const level = outcome === 'partial' ? 'warn' : 'info';
+  const head = outcome === 'partial' ? '任务部分成功' : '任务成功';
+  await logTask(taskId, level, `${head} · ${imgPart}${detailPart}`.slice(0, 500));
+}
+
 const TASK_TIMEOUT_MS = Number(process.env.TASK_TIMEOUT_MS || 12 * 60 * 1000);
 /** 产品配图多轮重试，整任务时限放宽，避免有图仍被标失败 */
 const PRODUCT_TASK_TIMEOUT_MS = Number(process.env.PRODUCT_TASK_TIMEOUT_MS || 20 * 60 * 1000);
@@ -87,7 +110,6 @@ async function markProcessing(taskId) {
     where: { id: taskId },
     data: { status: TASK_STATUS.PROCESSING }
   });
-  await logTask(taskId, 'info', '开始处理');
 }
 
 async function markFailed(taskId, error) {
@@ -97,7 +119,7 @@ async function markFailed(taskId, error) {
       where: { id: taskId },
       data: { status: TASK_STATUS.FAILED, error: friendly.slice(0, 200) }
     });
-    await logTask(taskId, 'error', friendly.slice(0, 500));
+    await logTaskOutcome(taskId, { outcome: 'fail', detail: friendly.slice(0, 200) });
   } catch (err) {
     console.error('[task:markFailed]', taskId, err.message);
   }
@@ -213,7 +235,6 @@ async function runGenerationTaskBody(taskId) {
     // 一键改文：先改写文案，再按用户选择走通用配图
     const source = String(inputs.article || inputs.keyword || '').trim();
     console.log('[task:generation] rewrite start', taskId, 'len=', source.length, 'images=', imageCount);
-    await logTask(taskId, 'info', '开始改写', { length: source.length, imageCount });
     const result = await withTimeout(
       rewriteArticlePipeline({
         source,
@@ -252,7 +273,7 @@ async function runGenerationTaskBody(taskId) {
           error: rewriteSoftNote
         }
       });
-      await logTask(taskId, 'info', '任务完成');
+      await logTaskOutcome(taskId, { outcome: 'success', imagesOk: 0, imagesExpected: 0 });
       return;
     }
   } else {
@@ -282,7 +303,6 @@ async function runGenerationTaskBody(taskId) {
     }
 
     console.log('[task:generation] start text', taskId, { imageCount, imageSource });
-    await logTask(taskId, 'info', '开始生成文案', { imageCount, imageSource });
     const storyboard = isStoryboardTemplate(task.template.name);
     // 分镜输出长、模型慢：给足时间，并允许超时后自动再试 1 次
     const textTimeout = storyboard ? 480000 : 180000;
@@ -321,7 +341,6 @@ async function runGenerationTaskBody(taskId) {
       data: { output, error: null }
     });
     console.log('[task:generation] text done', taskId, 'len=', output.length);
-    await logTask(taskId, 'info', '文案生成完成', { length: output.length });
   }
 
   if (
@@ -535,6 +554,13 @@ async function runGenerationTaskBody(taskId) {
           error: soft.slice(0, 200)
         }
       });
+      await logTaskOutcome(taskId, {
+        outcome: 'partial',
+        imagesOk: 0,
+        imagesExpected: jobs.length,
+        imageSource: 'product',
+        detail: '文案完成，配图失败'
+      });
       return;
     }
 
@@ -554,7 +580,13 @@ async function runGenerationTaskBody(taskId) {
       }
     });
     console.log('[task:generation] product completed', taskId, 'images=', success, '/', expected);
-    await logTask(taskId, 'info', `产品配图完成（${success}/${expected}）`, { success, expected });
+    await logTaskOutcome(taskId, {
+      outcome: success < expected ? 'partial' : 'success',
+      imagesOk: success,
+      imagesExpected: expected,
+      imageSource: 'product',
+      detail: failCount ? `${failCount} 张未出` : ''
+    });
     return;
   }
 
@@ -564,7 +596,7 @@ async function runGenerationTaskBody(taskId) {
       where: { id: taskId },
       data: { status: TASK_STATUS.COMPLETED, output: finalOutput }
     });
-    await logTask(taskId, 'info', '任务完成');
+    await logTaskOutcome(taskId, { outcome: 'success', imagesOk: 0, imagesExpected: 0 });
     return;
   }
 
@@ -581,6 +613,13 @@ async function runGenerationTaskBody(taskId) {
         output: withComplianceFooters(output, imageSource, imageMeta),
         error: rewriteSoftNote
       }
+    });
+    await logTaskOutcome(taskId, {
+      outcome: 'success',
+      imagesOk: imageUrls.filter(Boolean).length,
+      imagesExpected: imageCount,
+      imageSource,
+      detail: rewriteSoftNote || ''
     });
     return;
   }
@@ -615,10 +654,6 @@ async function runGenerationTaskBody(taskId) {
       imageSource,
       slotCustomPrompt ? '(custom prompt)' : plan?.searchQuery
     );
-    await logTask(taskId, 'info', `配图 ${i + 1}/${imageCount} · ${formatImageSourceLabel(imageSource)}`, {
-      searchQuery: slotCustomPrompt ? undefined : plan?.searchQuery || undefined,
-      customPrompt: Boolean(slotCustomPrompt) || undefined
-    });
 
     if (imageSource === 'web') {
       const topicKind = detectTopicKind(`${keyword} ${style} ${plan.caption || ''} ${output.slice(0, 200)}`);
@@ -694,7 +729,14 @@ async function runGenerationTaskBody(taskId) {
     }
   });
   console.log('[task:generation] completed', taskId);
-  await logTask(taskId, 'info', '任务完成');
+  const okCount = imageUrls.filter(Boolean).length;
+  await logTaskOutcome(taskId, {
+    outcome: okCount >= imageCount ? 'success' : 'partial',
+    imagesOk: okCount,
+    imagesExpected: imageCount,
+    imageSource,
+    detail: rewriteSoftNote || ''
+  });
 }
 
 async function loadTaskImageUrls(taskId) {
@@ -747,7 +789,12 @@ export async function runGenerationTask(taskId) {
           }
         });
         console.log('[task:generation] salvage partial images after timeout', taskId, urls.length);
-        await logTask(taskId, 'warn', `超时后保留已生成的部分配图（${urls.length} 张）`, { count: urls.length });
+        await logTaskOutcome(taskId, {
+          outcome: 'partial',
+          imagesOk: urls.length,
+          imagesExpected: 0,
+          detail: '任务超时，其余未出齐'
+        });
         return;
       }
     }
@@ -773,7 +820,12 @@ export async function runGenerationTask(taskId) {
         }
       });
       console.log('[task:generation] salvage text after image failure', taskId);
-      await logTask(taskId, 'warn', '配图失败，已保留文案结果');
+      await logTaskOutcome(taskId, {
+        outcome: 'partial',
+        imagesOk: 0,
+        imagesExpected: 0,
+        detail: '文案完成，配图失败'
+      });
       return;
     }
 
@@ -824,6 +876,12 @@ export async function runImageTask(taskId) {
     if (task.parentId) {
       await saveImages(task.parentId, [storedUrl], meta);
     }
+    await logTaskOutcome(taskId, {
+      outcome: 'success',
+      imagesOk: 1,
+      imagesExpected: 1,
+      imageSource: 'ai'
+    });
   } catch (err) {
     console.error('[task:image]', taskId, err.message);
     await markFailed(taskId, formatImageError(err));
@@ -833,12 +891,6 @@ export async function runImageTask(taskId) {
 }
 
 export function enqueueGenerationTask(taskId) {
-  const stats = getTaskQueueStats();
-  logTask(taskId, 'info', `已加入队列（运行 ${stats.active}，等待 ${stats.waiting}）`, {
-    maxConcurrent: getMaxConcurrentTasks(),
-    active: stats.active,
-    waiting: stats.waiting
-  }).catch(() => {});
   setImmediate(() => {
     runWithTaskSlot(`generation:${taskId}`, () => runGenerationTask(taskId)).catch((err) =>
       console.error('[task:generation:unhandled]', err)
@@ -1017,138 +1069,153 @@ export async function regenerateOneImage(taskId, userId, imageIndex) {
 }
 
 async function runRegenerateOneImage(taskId, index) {
-  const task = await prisma.generationRecord.findUnique({
-    where: { id: taskId },
-    include: { template: true }
-  });
-  if (!task) return;
+  try {
+    const task = await prisma.generationRecord.findUnique({
+      where: { id: taskId },
+      include: { template: true }
+    });
+    if (!task) return;
 
-  const { inputs, imageCount, imageSize, imageSource, customImagePrompts } = parseInput(task);
-  const keyword = inputs.keyword || '';
-  const style = inputs.style || '';
-  let output = stripWebAttribution(String(task.output || ''));
-  const existing = parseTaskImages(task);
-  const imageUrls = [...existing.imageUrls];
-  const imageMeta = [...existing.imageMeta];
+    const { inputs, imageCount, imageSize, imageSource, customImagePrompts } = parseInput(task);
+    const keyword = inputs.keyword || '';
+    const style = inputs.style || '';
+    let output = stripWebAttribution(String(task.output || ''));
+    const existing = parseTaskImages(task);
+    const imageUrls = [...existing.imageUrls];
+    const imageMeta = [...existing.imageMeta];
 
-  while (imageUrls.length <= index) imageUrls.push('');
-  while (imageMeta.length <= index) imageMeta.push({ url: '', caption: `配图 ${index + 1}` });
+    while (imageUrls.length <= index) imageUrls.push('');
+    while (imageMeta.length <= index) imageMeta.push({ url: '', caption: `配图 ${index + 1}` });
 
-  const prev = imageMeta[index] || {};
-  const caption = prev.caption || `配图 ${index + 1}`;
-  const searchQuery = prev.query || keyword || caption;
-  const slotCustomPrompt = imageSource === 'ai' ? customPromptAt(customImagePrompts, index) : '';
+    const prev = imageMeta[index] || {};
+    const regenCount = getImageRegenCount(prev);
+    const caption = prev.caption || `配图 ${index + 1}`;
+    const searchQuery = prev.query || keyword || caption;
+    const slotCustomPrompt = imageSource === 'ai' ? customPromptAt(customImagePrompts, index) : '';
 
-  const excludeUrls = [];
-  for (let i = 0; i < imageUrls.length; i += 1) {
-    const m = imageMeta[i] || {};
-    const remote = m.remoteUrl || m.url || imageUrls[i];
-    if (/^https?:\/\//i.test(String(remote || ''))) excludeUrls.push(remote);
-  }
+    const excludeUrls = [];
+    for (let i = 0; i < imageUrls.length; i += 1) {
+      const m = imageMeta[i] || {};
+      const remote = m.remoteUrl || m.url || imageUrls[i];
+      if (/^https?:\/\//i.test(String(remote || ''))) excludeUrls.push(remote);
+    }
 
-  console.log(
-    '[task:regen-image] start',
-    taskId,
-    index + 1,
-    imageSource,
-    slotCustomPrompt ? '(custom prompt)' : searchQuery
-  );
-
-  let hitUrl;
-  let credit = imageSource === 'web' ? '网络公开检索' : AI_IMAGE_CREDIT;
-  let photographer = '';
-  let sourceUrl = '';
-
-  if (imageSource === 'web') {
-    const topicKind = detectTopicKind(`${keyword} ${style} ${caption} ${output.slice(0, 200)}`);
-    const results = await withTimeout(
-      searchWebImages(searchQuery, 1, {
-        keyword,
-        caption,
-        kind: topicKind,
-        excludeUrls,
-        index
-      }),
-      45000,
-      '网络搜图'
+    console.log(
+      '[task:regen-image] start',
+      taskId,
+      index + 1,
+      imageSource,
+      slotCustomPrompt ? '(custom prompt)' : searchQuery
     );
-    const hit = results[0];
-    if (!hit?.url) throw new Error('网络搜图未返回可用图片');
-    hitUrl = hit.url;
-    credit = hit.credit || credit;
-    photographer = hit.photographer || '';
-    sourceUrl = hit.sourceUrl || '';
-  } else {
-    let scenePrompt = slotCustomPrompt;
-    let plan = {};
-    if (!scenePrompt) {
-      const plans = await withTimeout(
-        planArticleImages({
-          output,
+
+    let hitUrl;
+    let credit = imageSource === 'web' ? '网络公开检索' : AI_IMAGE_CREDIT;
+    let photographer = '';
+    let sourceUrl = '';
+
+    if (imageSource === 'web') {
+      const topicKind = detectTopicKind(`${keyword} ${style} ${caption} ${output.slice(0, 200)}`);
+      const results = await withTimeout(
+        searchWebImages(searchQuery, 1, {
+          keyword,
+          caption,
+          kind: topicKind,
+          excludeUrls,
+          index
+        }),
+        45000,
+        '网络搜图'
+      );
+      const hit = results[0];
+      if (!hit?.url) throw new Error('网络搜图未返回可用图片');
+      hitUrl = hit.url;
+      credit = hit.credit || credit;
+      photographer = hit.photographer || '';
+      sourceUrl = hit.sourceUrl || '';
+    } else {
+      let scenePrompt = slotCustomPrompt;
+      let plan = {};
+      if (!scenePrompt) {
+        const plans = await withTimeout(
+          planArticleImages({
+            output,
+            keyword,
+            style,
+            count: Math.max(imageCount, index + 1)
+          }),
+          90000,
+          '配图规划'
+        );
+        plan = plans[index] || plans[plans.length - 1] || {};
+        scenePrompt = buildImagePromptVariant({
           keyword,
           style,
-          count: Math.max(imageCount, index + 1)
-        }),
-        90000,
-        '配图规划'
+          templateName: task.template?.name,
+          output,
+          index,
+          total: Math.max(imageCount, index + 1),
+          scenePrompt: plan.scenePrompt
+        });
+      }
+      hitUrl = await withTimeout(
+        generateImage({ prompt: scenePrompt, size: imageSize }),
+        360000,
+        'AI 配图'
       );
-      plan = plans[index] || plans[plans.length - 1] || {};
-      scenePrompt = buildImagePromptVariant({
-        keyword,
-        style,
-        templateName: task.template?.name,
-        output,
-        index,
-        total: Math.max(imageCount, index + 1),
-        scenePrompt: plan.scenePrompt
+    }
+
+    const storedUrl = await persistImageUrl(hitUrl);
+    const usedCustomPrompt = Boolean(slotCustomPrompt);
+    imageUrls[index] = storedUrl;
+    imageMeta[index] = {
+      ...prev,
+      url: storedUrl,
+      remoteUrl: storedUrl === hitUrl ? undefined : hitUrl,
+      caption: usedCustomPrompt ? caption || `配图 ${index + 1}` : caption,
+      query: usedCustomPrompt ? slotCustomPrompt.slice(0, 120) : searchQuery,
+      sourceType: imageSource === 'web' ? 'web' : 'ai',
+      credit,
+      photographer,
+      sourceUrl,
+      customPrompt: usedCustomPrompt || undefined,
+      regenCount
+    };
+
+    const cleanMeta = imageMeta.filter((m) => m?.url);
+    const cleanUrls = imageUrls.filter(Boolean);
+    await saveImages(taskId, cleanUrls, cleanMeta);
+
+    if (imageSource === 'web' || imageSource === 'ai' || imageSource === 'product') {
+      const body = stripWebAttribution(String(task.output || ''));
+      await prisma.generationRecord.update({
+        where: { id: taskId },
+        data: {
+          output: withComplianceFooters(body, imageSource, cleanMeta),
+          error: null,
+          status: TASK_STATUS.COMPLETED
+        }
+      });
+    } else {
+      await prisma.generationRecord.update({
+        where: { id: taskId },
+        data: { error: null, status: TASK_STATUS.COMPLETED }
       });
     }
-    hitUrl = await withTimeout(
-      generateImage({ prompt: scenePrompt, size: imageSize }),
-      360000,
-      'AI 配图'
+
+    console.log('[task:regen-image] done', taskId, index + 1, storedUrl);
+    await logTask(
+      taskId,
+      'info',
+      `重新生成第 ${index + 1} 张成功 · 本张第 ${regenCount} 次 · ${formatImageSourceLabel(imageSource)}`
+    );
+  } catch (err) {
+    console.error('[task:regen-image]', taskId, index, err.message);
+    await logTask(
+      taskId,
+      'error',
+      `重新生成第 ${index + 1} 张失败 · ${toUserErrorMessage(err, '服务繁忙')}`.slice(0, 500)
     );
   }
-
-  const storedUrl = await persistImageUrl(hitUrl);
-  const usedCustomPrompt = Boolean(slotCustomPrompt);
-  imageUrls[index] = storedUrl;
-  imageMeta[index] = {
-    ...prev,
-    url: storedUrl,
-    remoteUrl: storedUrl === hitUrl ? undefined : hitUrl,
-    caption: usedCustomPrompt ? caption || `配图 ${index + 1}` : caption,
-    query: usedCustomPrompt ? slotCustomPrompt.slice(0, 120) : searchQuery,
-    sourceType: imageSource === 'web' ? 'web' : 'ai',
-    credit,
-    photographer,
-    sourceUrl,
-    customPrompt: usedCustomPrompt || undefined,
-    regenCount: getImageRegenCount(prev)
-  };
-
-  const cleanMeta = imageMeta.filter((m) => m?.url);
-  const cleanUrls = imageUrls.filter(Boolean);
-  await saveImages(taskId, cleanUrls, cleanMeta);
-
-  if (imageSource === 'web' || imageSource === 'ai' || imageSource === 'product') {
-    const body = stripWebAttribution(String(task.output || ''));
-    await prisma.generationRecord.update({
-      where: { id: taskId },
-      data: {
-        output: withComplianceFooters(body, imageSource, cleanMeta),
-        error: null,
-        status: TASK_STATUS.COMPLETED
-      }
-    });
-  } else {
-    await prisma.generationRecord.update({
-      where: { id: taskId },
-      data: { error: null, status: TASK_STATUS.COMPLETED }
-    });
-  }
-
-  console.log('[task:regen-image] done', taskId, index + 1, storedUrl);
 }
 
 /**
