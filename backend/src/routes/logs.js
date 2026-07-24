@@ -1,7 +1,15 @@
 import { Router } from 'express';
 import { prisma } from '../lib/prisma.js';
 import { authMiddleware } from '../middleware/auth.js';
-import { canViewLogs, clampLogLimit, backfillTaskLogsFromRecords, maskPhone } from '../lib/logger.js';
+import {
+  canViewLogs,
+  clampLogLimit,
+  backfillTaskLogsFromRecords,
+  maskPhone,
+  parseLogMeta,
+  isRegisterLogTaskId,
+  SYS_REGISTER_TASK_ID
+} from '../lib/logger.js';
 
 const router = Router();
 
@@ -18,18 +26,24 @@ router.get('/meta', authMiddleware, async (req, res) => {
   const user = await prisma.user.findUnique({ where: { id: req.userId } });
   res.json({
     code: 200,
-    data: { canViewLogs: canViewLogs(user?.phone) }
+    data: {
+      canViewLogs: canViewLogs(user?.phone),
+      modules: ['tasks', 'register']
+    }
   });
 });
 
 router.get('/', authMiddleware, requireLogViewer, async (req, res) => {
   try {
-    // 首次查询时把历史任务补成可检索摘要
-    try {
-      const n = await backfillTaskLogsFromRecords();
-      if (n) console.log('[logs] backfilled', n);
-    } catch (err) {
-      console.warn('[logs] backfill', err.message);
+    // 首次查询时把历史任务补成可检索摘要（仅任务模块）
+    const module = String(req.query.module || 'tasks').trim() || 'tasks';
+    if (module !== 'register') {
+      try {
+        const n = await backfillTaskLogsFromRecords();
+        if (n) console.log('[logs] backfilled', n);
+      } catch (err) {
+        console.warn('[logs] backfill', err.message);
+      }
     }
 
     const taskId = String(req.query.taskId || '').trim() || undefined;
@@ -38,13 +52,25 @@ router.get('/', authMiddleware, requireLogViewer, async (req, res) => {
     const before = String(req.query.before || '').trim();
 
     const where = {};
-    if (taskId) {
-      // 支持完整 ID 或前缀（列表里截断的 ID 也能搜）
-      where.taskId = { contains: taskId.replace(/…/g, '').replace(/\.\.\./g, '') };
+    if (module === 'register') {
+      where.taskId = SYS_REGISTER_TASK_ID;
+      if (q) {
+        where.OR = [
+          { message: { contains: q } },
+          { meta: { contains: q } }
+        ];
+      }
+    } else {
+      // 任务日志：排除系统模块
+      where.NOT = { taskId: SYS_REGISTER_TASK_ID };
+      if (taskId) {
+        where.taskId = { contains: taskId.replace(/…/g, '').replace(/\.\.\./g, '') };
+      }
+      if (q) {
+        where.message = { contains: q };
+      }
     }
-    if (q) {
-      where.message = { contains: q };
-    }
+
     if (before) {
       const d = new Date(before);
       if (!Number.isNaN(d.getTime())) where.createdAt = { lt: d };
@@ -56,7 +82,13 @@ router.get('/', authMiddleware, requireLogViewer, async (req, res) => {
       take: limit
     });
 
-    const taskIds = [...new Set(rows.map((r) => r.taskId).filter(Boolean))];
+    const taskIds = [
+      ...new Set(
+        rows
+          .map((r) => r.taskId)
+          .filter((id) => id && !isRegisterLogTaskId(id))
+      )
+    ];
     const ownerByTask = new Map();
     if (taskIds.length) {
       const records = await prisma.generationRecord.findMany({
@@ -77,10 +109,27 @@ router.get('/', authMiddleware, requireLogViewer, async (req, res) => {
     res.json({
       code: 200,
       data: {
+        module,
         items: rows.map((r) => {
+          const metaObj = parseLogMeta(r.meta);
+          if (isRegisterLogTaskId(r.taskId) || metaObj.module === 'register') {
+            return {
+              id: r.id,
+              module: 'register',
+              taskId: r.taskId,
+              level: r.level,
+              message: r.message,
+              meta: r.meta,
+              createdAt: r.createdAt,
+              userId: metaObj.userId || '',
+              nickName: metaObj.nickName || '',
+              phone: maskPhone(metaObj.phone || '')
+            };
+          }
           const owner = (r.taskId && ownerByTask.get(r.taskId)) || {};
           return {
             id: r.id,
+            module: 'tasks',
             taskId: r.taskId,
             level: r.level,
             message: r.message,

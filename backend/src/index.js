@@ -115,7 +115,7 @@ if (fs.existsSync(staticDir)) {
 app.listen(port, '0.0.0.0', async () => {
   const client = createAIClient();
   const fallbacks = getFallbackModes();
-  console.log(`AI Writer API running at http://0.0.0.0:${port}`);
+  console.log(`小溪AI创作工具 API running at http://0.0.0.0:${port}`);
   console.log('AI baseURL:', client.baseURL);
   console.log('AI model:', process.env.AI_MODEL);
   console.log('AI mode:', process.env.AI_MODE || 'api');

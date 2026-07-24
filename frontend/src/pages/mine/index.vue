@@ -43,7 +43,7 @@
       <view v-if="userStore.isLogin && canViewLogs" class="menu-item" @click="goLogs">
         <view>
           <text class="menu-title">运行日志</text>
-          <text class="menu-sub">按任务折叠查看生成过程</text>
+          <text class="menu-sub">任务过程 · 新用户注册</text>
         </view>
         <text class="arrow">›</text>
       </view>

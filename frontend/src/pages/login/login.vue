@@ -1,5 +1,9 @@
 <template>
   <view class="page">
+    <view class="brand">
+      <text class="brand-name">小溪AI创作工具</text>
+      <text class="brand-desc">登录后开始创作</text>
+    </view>
     <view class="form">
       <input v-model="phone" class="input" type="number" maxlength="11" placeholder="手机号" />
       <input v-model="password" class="input" password placeholder="密码" />
@@ -69,6 +73,23 @@ async function handleLogin() {
 <style scoped>
 .page {
   padding: 48rpx 32rpx;
+}
+.brand {
+  margin-bottom: 40rpx;
+  padding: 8rpx 8rpx 0;
+}
+.brand-name {
+  display: block;
+  font-size: 44rpx;
+  font-weight: 700;
+  color: #1a1a2e;
+  letter-spacing: 1rpx;
+}
+.brand-desc {
+  display: block;
+  margin-top: 12rpx;
+  font-size: 26rpx;
+  color: #909399;
 }
 .form {
   background: #fff;

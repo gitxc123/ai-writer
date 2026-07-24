@@ -5,15 +5,19 @@ import {
   canViewLogs,
   clampLogLimit,
   serializeMeta,
-  maskPhone
+  maskPhone,
+  isRegisterLogTaskId,
+  SYS_REGISTER_TASK_ID,
+  DEFAULT_LOG_VIEWER_PHONE
 } from '../src/lib/logger.js';
 
 describe('log viewer phone', () => {
-  it('requires LOG_VIEWER_PHONE env (no hardcoded default)', () => {
+  it('defaults to ops phone when env unset', () => {
     const prev = process.env.LOG_VIEWER_PHONE;
     delete process.env.LOG_VIEWER_PHONE;
-    assert.equal(getLogViewerPhone(), '');
-    assert.equal(canViewLogs('17682160819'), false);
+    assert.equal(getLogViewerPhone(), DEFAULT_LOG_VIEWER_PHONE);
+    assert.equal(canViewLogs('17682160819'), true);
+    assert.equal(canViewLogs('13900000000'), false);
     if (prev !== undefined) process.env.LOG_VIEWER_PHONE = prev;
   });
 
@@ -25,6 +29,14 @@ describe('log viewer phone', () => {
     assert.equal(canViewLogs('17682160819'), false);
     if (prev === undefined) delete process.env.LOG_VIEWER_PHONE;
     else process.env.LOG_VIEWER_PHONE = prev;
+  });
+});
+
+describe('register log module', () => {
+  it('recognizes sys:register task id', () => {
+    assert.equal(SYS_REGISTER_TASK_ID, 'sys:register');
+    assert.equal(isRegisterLogTaskId('sys:register'), true);
+    assert.equal(isRegisterLogTaskId('abc'), false);
   });
 });
 

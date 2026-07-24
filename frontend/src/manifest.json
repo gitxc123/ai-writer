@@ -1,11 +1,11 @@
 {
-  "name": "AI Writer",
+  "name": "小溪AI创作工具",
   "appid": "",
-  "description": "AI 文案生成平台",
+  "description": "小溪AI创作工具 — AI 文案与配图辅助",
   "versionName": "0.1.0",
   "versionCode": "100",
   "h5": {
-    "title": "AI Writer",
+    "title": "小溪AI创作工具",
     "router": {
       "mode": "hash"
     },

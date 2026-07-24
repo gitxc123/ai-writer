@@ -161,7 +161,9 @@ export const api = {
   getLogsMeta: () => request({ url: '/logs/meta' }),
   getLogs: (params = {}) => {
     const q = new URLSearchParams();
+    if (params.module) q.set('module', params.module);
     if (params.taskId) q.set('taskId', params.taskId);
+    if (params.q) q.set('q', params.q);
     if (params.limit) q.set('limit', String(params.limit));
     if (params.before) q.set('before', params.before);
     const qs = q.toString();

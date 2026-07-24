@@ -1,10 +1,31 @@
 <template>
   <view class="page">
+    <view class="tabs">
+      <view
+        class="tab"
+        :class="{ on: logModule === 'tasks' }"
+        @click="switchModule('tasks')"
+      >
+        任务日志
+      </view>
+      <view
+        class="tab"
+        :class="{ on: logModule === 'register' }"
+        @click="switchModule('register')"
+      >
+        新用户注册
+      </view>
+    </view>
+
     <view class="toolbar">
       <input
         v-model="filter"
         class="input"
-        placeholder="任务 ID（支持前缀）或点最近"
+        :placeholder="
+          logModule === 'register'
+            ? '搜索昵称 / 手机号片段'
+            : '任务 ID（支持前缀）或点最近'
+        "
         confirm-type="search"
         @confirm="search"
       />
@@ -12,46 +33,80 @@
         <text class="btn-link" @click="search">查询</text>
         <text class="btn-link" @click="loadRecent">最近</text>
       </view>
-      <text class="hint">同一任务的过程日志已折叠为一条，点开可看明细</text>
+      <text class="hint">
+        {{
+          logModule === 'register'
+            ? '记录新用户注册时间、昵称与脱敏手机号'
+            : '同一任务的过程日志已折叠为一条，点开可看明细'
+        }}
+      </text>
     </view>
 
     <view v-if="loading" class="empty">加载中...</view>
-    <view v-else-if="groups.length === 0" class="empty">
-      {{ filter ? '没有匹配的日志，请确认任务 ID 是否完整，或点「最近」查看全部' : '暂无日志。请新提交一次生成任务；也可点「最近」加载历史任务摘要' }}
+    <view v-else-if="logModule === 'register' && registerItems.length === 0" class="empty">
+      {{ filter ? '没有匹配的注册记录' : '暂无新用户注册记录' }}
+    </view>
+    <view v-else-if="logModule === 'tasks' && groups.length === 0" class="empty">
+      {{
+        filter
+          ? '没有匹配的日志，请确认任务 ID 是否完整，或点「最近」查看全部'
+          : '暂无日志。请新提交一次生成任务；也可点「最近」加载历史任务摘要'
+      }}
     </view>
 
-    <view
-      v-for="g in groups"
-      :key="g.key"
-      class="card"
-      @click="toggle(g.key)"
-    >
-      <view class="meta">
-        <text class="level" :class="g.level">{{ g.level }}</text>
-        <text class="time">{{ formatTime(g.updatedAt) }}</text>
+    <!-- 新用户注册：平铺列表 -->
+    <template v-if="logModule === 'register'">
+      <view v-for="item in registerItems" :key="item.id" class="card">
+        <view class="meta">
+          <text class="level info">注册</text>
+          <text class="time">{{ formatTime(item.createdAt) }}</text>
+        </view>
+        <view v-if="item.account" class="account-row">
+          <text class="account">{{ item.account }}</text>
+        </view>
+        <view v-if="item.userId" class="task-row">
+          <text class="task-id">用户 ID · {{ item.userId }}</text>
+          <text class="copy" @click.stop="copyId(item.userId, '已复制用户 ID')">复制</text>
+        </view>
+        <text class="message">{{ item.message }}</text>
       </view>
-      <view v-if="g.account" class="account-row">
-        <text class="account">{{ g.account }}</text>
-      </view>
-      <view v-if="g.taskId" class="task-row">
-        <text class="task-id">{{ g.taskId }}</text>
-        <text class="copy" @click.stop="copyId(g.taskId)">复制</text>
-      </view>
-      <view class="summary-row">
-        <text class="message">{{ g.summary }}</text>
-        <text class="expand">{{ expanded[g.key] ? '收起' : `${g.steps.length} 步 ›` }}</text>
-      </view>
+    </template>
 
-      <view v-if="expanded[g.key]" class="steps" @click.stop>
-        <view v-for="step in g.steps" :key="step.id" class="step">
-          <view class="step-meta">
-            <text class="level tiny" :class="step.level">{{ step.level }}</text>
-            <text class="step-time">{{ formatTime(step.createdAt) }}</text>
+    <!-- 任务日志：按任务折叠 -->
+    <template v-else>
+      <view
+        v-for="g in groups"
+        :key="g.key"
+        class="card"
+        @click="toggle(g.key)"
+      >
+        <view class="meta">
+          <text class="level" :class="g.level">{{ g.level }}</text>
+          <text class="time">{{ formatTime(g.updatedAt) }}</text>
+        </view>
+        <view v-if="g.account" class="account-row">
+          <text class="account">{{ g.account }}</text>
+        </view>
+        <view v-if="g.taskId" class="task-row">
+          <text class="task-id">{{ g.taskId }}</text>
+          <text class="copy" @click.stop="copyId(g.taskId)">复制</text>
+        </view>
+        <view class="summary-row">
+          <text class="message">{{ g.summary }}</text>
+          <text class="expand">{{ expanded[g.key] ? '收起' : `${g.steps.length} 步 ›` }}</text>
+        </view>
+
+        <view v-if="expanded[g.key]" class="steps" @click.stop>
+          <view v-for="step in g.steps" :key="step.id" class="step">
+            <view class="step-meta">
+              <text class="level tiny" :class="step.level">{{ step.level }}</text>
+              <text class="step-time">{{ formatTime(step.createdAt) }}</text>
+            </view>
+            <text class="step-msg">{{ step.message }}</text>
           </view>
-          <text class="step-msg">{{ step.message }}</text>
         </view>
       </view>
-    </view>
+    </template>
   </view>
 </template>
 
@@ -59,8 +114,10 @@
 import { ref, reactive, onMounted } from 'vue';
 import { api } from '../../utils/request.js';
 
+const logModule = ref('tasks');
 const filter = ref('');
 const groups = ref([]);
+const registerItems = ref([]);
 const loading = ref(false);
 const expanded = reactive({});
 
@@ -113,7 +170,6 @@ function groupByTask(items) {
 
   return order.map((key) => {
     const g = map.get(key);
-    // 接口按时间倒序；组内步骤改为正序便于阅读过程
     const steps = [...g.steps].sort(
       (a, b) => new Date(a.createdAt).getTime() - new Date(b.createdAt).getTime()
     );
@@ -134,21 +190,32 @@ function toggle(key) {
   expanded[key] = !expanded[key];
 }
 
-async function load(taskId) {
+async function load(opts = {}) {
   loading.value = true;
   try {
+    const q = filter.value.trim();
     const data = await api.getLogs({
-      taskId: taskId || undefined,
+      module: logModule.value,
+      taskId: logModule.value === 'tasks' && q ? q : undefined,
+      q: logModule.value === 'register' && q ? q : undefined,
       limit: 200
     });
     const list = data.items || [];
-    groups.value = groupByTask(list);
-    Object.keys(expanded).forEach((k) => {
-      delete expanded[k];
-    });
-    // 按任务 ID 查询时默认展开这一组
-    if (taskId && groups.value.length === 1) {
-      expanded[groups.value[0].key] = true;
+    if (logModule.value === 'register') {
+      registerItems.value = list.map((item) => ({
+        ...item,
+        account: accountLabel(item)
+      }));
+      groups.value = [];
+    } else {
+      groups.value = groupByTask(list);
+      registerItems.value = [];
+      Object.keys(expanded).forEach((k) => {
+        delete expanded[k];
+      });
+      if (opts.taskId && groups.value.length === 1) {
+        expanded[groups.value[0].key] = true;
+      }
     }
   } catch (e) {
     uni.showToast({ title: e.message || '加载失败', icon: 'none' });
@@ -160,8 +227,15 @@ async function load(taskId) {
   }
 }
 
+function switchModule(next) {
+  if (logModule.value === next) return;
+  logModule.value = next;
+  filter.value = '';
+  load();
+}
+
 function search() {
-  load(filter.value.trim());
+  load({ taskId: logModule.value === 'tasks' ? filter.value.trim() : '' });
 }
 
 function loadRecent() {
@@ -169,11 +243,11 @@ function loadRecent() {
   load();
 }
 
-function copyId(id) {
+function copyId(id, tip = '已复制任务 ID') {
   if (!id) return;
   uni.setClipboardData({
     data: id,
-    success: () => uni.showToast({ title: '已复制任务 ID', icon: 'none' })
+    success: () => uni.showToast({ title: tip, icon: 'none' })
   });
 }
 
@@ -186,6 +260,27 @@ onMounted(() => load());
   padding-bottom: 60rpx;
   background: #f4f6fa;
   min-height: 100vh;
+}
+.tabs {
+  display: flex;
+  gap: 12rpx;
+  margin-bottom: 16rpx;
+}
+.tab {
+  flex: 1;
+  text-align: center;
+  padding: 18rpx 12rpx;
+  font-size: 28rpx;
+  color: #606266;
+  background: #fff;
+  border-radius: 12rpx;
+  border: 1rpx solid #ebeef5;
+}
+.tab.on {
+  color: #0a84ff;
+  font-weight: 600;
+  border-color: #0a84ff;
+  background: #eef6ff;
 }
 .toolbar {
   background: #fff;
@@ -299,6 +394,7 @@ onMounted(() => load());
   line-height: 1.5;
   flex: 1;
   min-width: 0;
+  display: block;
 }
 .expand {
   font-size: 22rpx;

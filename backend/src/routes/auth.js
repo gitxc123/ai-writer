@@ -5,6 +5,7 @@ import { authMiddleware, signToken } from '../middleware/auth.js';
 import { publicUser } from './membership.js';
 import { deleteUserAccount } from '../lib/account.js';
 import { ensureUserAvatar, assignAvatarOnCreate } from '../lib/avatars.js';
+import { logUserRegister } from '../lib/logger.js';
 
 const router = Router();
 
@@ -57,6 +58,8 @@ router.post('/register', async (req, res) => {
   } catch (err) {
     console.warn('[auth] terms/age columns', err.message);
   }
+
+  await logUserRegister(user);
 
   // 不自动签发登录态：前端须引导至登录页重新登录
   res.json({

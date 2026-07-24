@@ -3,7 +3,7 @@
     {
       "path": "pages/index/index",
       "style": {
-        "navigationBarTitleText": "AI 文案助手",
+        "navigationBarTitleText": "小溪AI创作工具",
         "navigationStyle": "custom"
       }
     },

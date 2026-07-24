@@ -1,7 +1,7 @@
 <template>
   <view class="page">
     <view class="hero">
-      <text class="hero-title">AI 文案助手</text>
+      <text class="hero-title">小溪AI创作工具</text>
       <text class="hero-desc">一键生成小红书、头条、公众号等平台文案</text>
     </view>
 

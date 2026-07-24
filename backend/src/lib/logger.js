@@ -1,19 +1,26 @@
 import { prisma } from './prisma.js';
 
-/** 仅允许环境变量配置；不再内置默认手机号，避免源码泄露运营身份 */
-export const DEFAULT_LOG_VIEWER_PHONE = '';
+/** 未配置环境变量时默认开放给运营号（与发码账号一致） */
+export const DEFAULT_LOG_VIEWER_PHONE = '17682160819';
 export const DEFAULT_LOG_LIMIT = 100;
 export const MAX_LOG_LIMIT = 200;
 export const DEFAULT_TASK_LOG_RETENTION_DAYS = 7;
 export const MAX_TASK_LOG_ROWS = 5000;
 
+/** 系统模块：新用户注册（非创作任务） */
+export const SYS_REGISTER_TASK_ID = 'sys:register';
+
 export function getLogViewerPhone() {
-  return String(process.env.LOG_VIEWER_PHONE || '').trim();
+  return String(process.env.LOG_VIEWER_PHONE || DEFAULT_LOG_VIEWER_PHONE).trim();
 }
 
 export function canViewLogs(phone) {
   const viewer = getLogViewerPhone();
   return Boolean(viewer) && Boolean(phone) && String(phone) === viewer;
+}
+
+export function isRegisterLogTaskId(taskId) {
+  return String(taskId || '').trim() === SYS_REGISTER_TASK_ID;
 }
 
 /** 138****8000 */
@@ -36,6 +43,17 @@ export function serializeMeta(meta) {
     return JSON.stringify(meta).slice(0, 2000);
   } catch {
     return null;
+  }
+}
+
+export function parseLogMeta(meta) {
+  if (meta == null || meta === '') return {};
+  if (typeof meta === 'object') return meta;
+  try {
+    const o = JSON.parse(String(meta));
+    return o && typeof o === 'object' ? o : {};
+  } catch {
+    return {};
   }
 }
 
@@ -64,6 +82,21 @@ export async function logTask(taskId, level, message, meta) {
   } catch (err) {
     console.warn('[logger] write failed', err.message);
   }
+}
+
+/** 记录新用户注册（供运营日志「新用户注册」模块查看） */
+export async function logUserRegister(user) {
+  if (!user?.id) return;
+  const nick = String(user.nickName || '').trim() || '未命名';
+  const phone = String(user.phone || '').trim();
+  await logTask(SYS_REGISTER_TASK_ID, 'info', `新用户注册 · ${nick} · ${maskPhone(phone)}`, {
+    module: 'register',
+    userId: user.id,
+    nickName: nick,
+    phone,
+    avatar: user.avatar || null,
+    registeredAt: new Date().toISOString()
+  });
 }
 
 /** 把历史任务补一条摘要日志，便于按任务 ID 检索（仅当 TaskLog 为空时） */
